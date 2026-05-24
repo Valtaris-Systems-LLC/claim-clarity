@@ -1,7 +1,8 @@
 /**
  * Explainability Engine — Fragment Library
  * Single source of truth for all explanation text.
- * Smart Search and Guided Help share this engine.
+ * Smart Search, Guided Help, Claim Clarity, trace views, and denial recovery
+ * workflows share this engine.
  */
 
 import type { ExplanationFragment, CARCRARCMapping } from '@/types/trace';
@@ -31,6 +32,13 @@ export const FRAGMENT_LIBRARY: ExplanationFragment[] = [
   // Summary (L0)
   { fragment_id: 'frag_summary_paid', internal_code: 'SUMMARY_PAID', lens: 'member', locale: 'en', text: 'Your claim has been processed and payment has been issued.', detail_level: 0 },
   { fragment_id: 'frag_summary_denied', internal_code: 'SUMMARY_DENIED', lens: 'member', locale: 'en', text: 'Your claim was reviewed but could not be approved.', detail_level: 0 },
+
+  // Claim Clarity Recovery Intelligence
+  { fragment_id: 'frag_appeal_recommended', internal_code: 'APPEAL_REC', lens: 'provider', locale: 'en', text: 'This denial appears recoverable through appeal. Supporting documentation should be attached and resubmitted.', detail_level: 1 },
+  { fragment_id: 'frag_aging_risk', internal_code: 'AGING_RISK', lens: 'provider', locale: 'en', text: 'Claim aging is approaching critical filing limits. Recovery probability decreases as appeal windows close.', detail_level: 1 },
+  { fragment_id: 'frag_underpayment_detected', internal_code: 'UNDERPAY', lens: 'provider', locale: 'en', text: 'Potential underpayment detected. Paid amount appears lower than expected reimbursement.', detail_level: 1 },
+  { fragment_id: 'frag_missing_docs', internal_code: 'DOC_GAP', lens: 'provider', locale: 'en', text: 'Required documentation is missing and may prevent successful recovery.', detail_level: 1 },
+  { fragment_id: 'frag_high_recovery', internal_code: 'HIGH_RECOVERY', lens: 'provider', locale: 'en', text: 'Claim is considered a strong recovery candidate based on denial category, payer behavior, and documentation status.', detail_level: 1 },
 ];
 
 // CARC/RARC → Internal mapping
@@ -41,9 +49,6 @@ export const CARC_RARC_MAPPINGS: CARCRARCMapping[] = [
   { external_carc: '96', external_rarc: 'N20', internal_reason_code: 'DENY_NC', fragment_ids: { member: ['frag_denial_non_covered'], provider: ['frag_denial_non_covered'] } },
 ];
 
-/**
- * Look up fragments by ID, lens, and detail level
- */
 export function getFragment(
   fragmentId: string,
   lens: ExplanationFragment['lens'],
@@ -58,9 +63,6 @@ export function getFragment(
   );
 }
 
-/**
- * Map CARC/RARC to internal reason code
- */
 export function mapCARCtoInternal(carc: string, rarc?: string): CARCRARCMapping | undefined {
   return CARC_RARC_MAPPINGS.find(m =>
     m.external_carc === carc &&
@@ -68,9 +70,6 @@ export function mapCARCtoInternal(carc: string, rarc?: string): CARCRARCMapping 
   );
 }
 
-/**
- * Get explanation for a claim line result at specified detail level
- */
 export function explainLineResult(
   fragmentIds: string[],
   lens: ExplanationFragment['lens'],
@@ -81,4 +80,19 @@ export function explainLineResult(
     .map(fid => getFragment(fid, lens, locale, detailLevel))
     .filter((f): f is ExplanationFragment => f !== undefined)
     .map(f => f.text);
+}
+
+export function buildRecoveryExplanation(
+  score: number,
+  recoverabilityTier: 'HIGH' | 'MEDIUM' | 'LOW'
+): string {
+  if (recoverabilityTier === 'HIGH') {
+    return `Recovery Score ${score}. Strong recovery opportunity. Immediate appeal or correction is recommended.`;
+  }
+
+  if (recoverabilityTier === 'MEDIUM') {
+    return `Recovery Score ${score}. Recovery is possible but additional evidence or payer follow-up may be required.`;
+  }
+
+  return `Recovery Score ${score}. Recovery likelihood is low. Evaluate cost of pursuit before further effort.`;
 }
