@@ -1,14 +1,16 @@
+import type { ClaimIntel, WorkflowOwner } from './clarity';
+
 // Core domain types for DualPay adjudication
 
 export interface ClaimLine {
   line_id: string;
   claim_id: string;
-  service_date: string; // ISO date
+  service_date: string;
   claim_line_number: number;
   procedure_code: string;
   procedure_modifier?: string;
   diagnosis_codes: string[];
-  billed_amount: number; // cents
+  billed_amount: number;
   units: number;
   place_of_service: string;
   rendering_provider_npi?: string;
@@ -25,13 +27,17 @@ export interface Claim {
   received_date: string;
   service_date_from: string;
   service_date_to: string;
-  total_billed: number; // cents
+  total_billed: number;
   lines: ClaimLine[];
   ohi_indicators: OHIIndicator[];
   status: ClaimStatus;
   case_id?: string;
+
+  workflow_owner?: WorkflowOwner;
+  last_activity_at?: string;
+
   /** Operational intelligence envelope — populated by Claim Clarity. */
-  intel?: import('./clarity').ClaimIntel;
+  intel?: ClaimIntel;
 }
 
 export type ClaimStatus =
@@ -60,7 +66,7 @@ export interface OHIIndicator {
 export interface MemberAccumulators {
   member_id: string;
   plan_year: number;
-  individual_deductible_used: number; // cents
+  individual_deductible_used: number;
   individual_deductible_max: number;
   family_deductible_used: number;
   family_deductible_max: number;
@@ -86,7 +92,7 @@ export interface ContractTerms {
   effective_date: string;
   term_date: string;
   fee_schedule_id: string;
-  fee_schedule: Map<string, number>; // procedure_code -> allowed_cents
+  fee_schedule: Map<string, number>;
   reimbursement_method: 'fee_schedule' | 'percent_of_billed' | 'per_diem' | 'drg';
   percent_of_billed?: number;
 }
@@ -100,9 +106,9 @@ export interface PlanBenefits {
   deductible_family: number;
   oop_max_individual: number;
   oop_max_family: number;
-  coinsurance_rate: number; // 0-1, member's share after deductible
-  copay_amount?: number; // cents, if applicable
-  copay_applies_to?: string[]; // procedure codes or categories
+  coinsurance_rate: number;
+  copay_amount?: number;
+  copay_applies_to?: string[];
   cob_policy: COBPolicyType;
   covered_services: CoveredService[];
 }
@@ -114,7 +120,11 @@ export interface CoveredService {
   benefit_limit?: BenefitLimit;
 }
 
-export type COBPolicyType = 'standard' | 'non_duplication' | 'carve_out' | 'maintenance_of_benefits';
+export type COBPolicyType =
+  | 'standard'
+  | 'non_duplication'
+  | 'carve_out'
+  | 'maintenance_of_benefits';
 
 export interface PriorPayerOutcome {
   payer_id: string;
@@ -126,7 +136,7 @@ export interface PriorPayerOutcome {
   patient_responsibility: number;
   adjustments: PriorAdjustment[];
   source: 'edi_835' | 'ocr_pdf' | 'manual_entry';
-  confidence: number; // 0-1
+  confidence: number;
   source_document_ref?: string;
 }
 
@@ -134,10 +144,9 @@ export interface PriorAdjustment {
   carc_code: string;
   rarc_code?: string;
   amount: number;
-  group_code: string; // CO, PR, OA, PI, CR
+  group_code: string;
 }
 
-// Adjudication output per line
 export interface AdjudicationLineResult {
   line_id: string;
   claim_id: string;
@@ -156,7 +165,14 @@ export interface AdjudicationLineResult {
 export interface AdjustmentDetail {
   reason_code: string;
   amount: number;
-  category: 'contractual' | 'non_covered' | 'deductible' | 'coinsurance' | 'copay' | 'cob' | 'other';
+  category:
+    | 'contractual'
+    | 'non_covered'
+    | 'deductible'
+    | 'coinsurance'
+    | 'copay'
+    | 'cob'
+    | 'other';
 }
 
 export interface COBAllocation {
@@ -168,7 +184,6 @@ export interface COBAllocation {
   method: COBPolicyType;
 }
 
-// Session accumulator (immutable per step)
 export interface SessionAccumulator {
   deductible_remaining: number;
   oop_remaining: number;
@@ -176,16 +191,23 @@ export interface SessionAccumulator {
   lines_processed: string[];
 }
 
-// Adjudication run
 export interface AdjudicationRun {
   run_id: string;
   claim_id: string;
   timestamp: string;
-  line_processing_order: string[]; // line_ids in order
+
+  line_processing_order: string[];
   line_results: AdjudicationLineResult[];
+
   final_accumulator: SessionAccumulator;
+
   total_plan_paid: number;
   total_member_responsibility: number;
+
+  recoverability_score?: number;
+  recovery_tier?: 'HIGH' | 'MEDIUM' | 'LOW';
+  next_best_action?: string;
+
   trace_id: string;
   calc_policy_version: string;
 }
