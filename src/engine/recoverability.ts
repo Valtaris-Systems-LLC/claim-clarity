@@ -62,7 +62,7 @@ function payerBehaviorAdjust(intel: ClaimIntel): RecoveryFactor | null {
     return {
       label: 'Payer behavior',
       detail: 'Medicare payer class — more predictable policy-based adjudication patterns.',
-      delta: +4,
+      delta: 4,
       weight: 'adjust',
     };
   }
@@ -71,7 +71,7 @@ function payerBehaviorAdjust(intel: ClaimIntel): RecoveryFactor | null {
     return {
       label: 'Payer behavior',
       detail: 'Commercial payer class — recovery depends heavily on contract terms and documentation completeness.',
-      delta: +2,
+      delta: 2,
       weight: 'adjust',
     };
   }
@@ -128,15 +128,19 @@ function agingFactor(days: number): RecoveryFactor {
   return {
     label: 'Aging',
     detail: `${days}d — fresh claim; full recovery window likely available.`,
-    delta: +5,
+    delta: 5,
     weight: 'readiness',
   };
 }
 
 function appealHistoryFactors(intel: ClaimIntel): RecoveryFactor[] {
   const priorDenied = intel.appeals.filter((a) => a.status === 'denied').length;
-  const priorApproved = intel.appeals.filter((a) => a.status === 'approved').length;
-  const pending = intel.appeals.filter((a) => a.status === 'pending').length;
+  const priorApproved = intel.appeals.filter(
+    (a) => a.status === 'approved' || a.status === 'partial',
+  ).length;
+  const active = intel.appeals.filter(
+    (a) => a.status === 'draft' || a.status === 'submitted' || a.status === 'in_review',
+  ).length;
 
   const factors: RecoveryFactor[] = [];
 
@@ -152,16 +156,16 @@ function appealHistoryFactors(intel: ClaimIntel): RecoveryFactor[] {
   if (priorApproved > 0) {
     factors.push({
       label: 'Appeal precedent',
-      detail: `${priorApproved} prior approved appeal(s) — favorable pattern exists for this claim context.`,
-      delta: +6,
+      detail: `${priorApproved} prior successful appeal outcome(s) — favorable pattern exists for this claim context.`,
+      delta: 6,
       weight: 'readiness',
     });
   }
 
-  if (pending > 0) {
+  if (active > 0) {
     factors.push({
       label: 'Open appeal activity',
-      detail: `${pending} pending appeal(s) — avoid duplicate effort and monitor payer response.`,
+      detail: `${active} active appeal(s) — avoid duplicate effort and monitor payer response.`,
       delta: -3,
       weight: 'adjust',
     });
@@ -189,7 +193,7 @@ function documentationFactors(intel: ClaimIntel, appealEligible: boolean): Recov
       {
         label: 'Documentation readiness',
         detail: 'Required appeal evidence appears present.',
-        delta: +8,
+        delta: 8,
         weight: 'readiness',
       },
     ];
@@ -199,7 +203,7 @@ function documentationFactors(intel: ClaimIntel, appealEligible: boolean): Recov
     {
       label: 'Documentation status',
       detail: 'No documentation gap detected.',
-      delta: +4,
+      delta: 4,
       weight: 'readiness',
     },
   ];
@@ -210,7 +214,7 @@ function claimValueFactor(totalBilled: number): RecoveryFactor {
     return {
       label: 'Claim value',
       detail: 'Very high-value claim — executive escalation is economically justified.',
-      delta: +8,
+      delta: 8,
       weight: 'economic',
     };
   }
@@ -219,7 +223,7 @@ function claimValueFactor(totalBilled: number): RecoveryFactor {
     return {
       label: 'Claim value',
       detail: 'High-value claim — prioritize recovery workflow.',
-      delta: +6,
+      delta: 6,
       weight: 'economic',
     };
   }
@@ -228,7 +232,7 @@ function claimValueFactor(totalBilled: number): RecoveryFactor {
     return {
       label: 'Claim value',
       detail: 'Meaningful recovery value — normal appeal effort justified.',
-      delta: +3,
+      delta: 3,
       weight: 'economic',
     };
   }
@@ -257,8 +261,11 @@ function buildRecoveryBarriers(claim: Claim & { intel: ClaimIntel }): string[] {
   if (intel.aging_days > 120) barriers.push('Aging / timely filing risk');
   if ((intel.evidence_missing ?? []).length > 0) barriers.push('Missing documentation');
   if (intel.appeals.some((a) => a.status === 'denied')) barriers.push('Prior denied appeal history');
-  if (intel.denial_events.some((d) => !d.appeal_eligible)) barriers.push('Denial may not be appeal eligible');
+  if (intel.denial_events.some((d) => !d.appeal_eligible && !d.correction_eligible && !d.resubmission_eligible)) {
+    barriers.push('No obvious appeal/correction/resubmission path');
+  }
   if (claim.total_billed < 20_000) barriers.push('Low appeal ROI');
+  if (intel.payer_class === 'medicaid') barriers.push('Payer class may require stricter documentation');
 
   return barriers;
 }
@@ -278,8 +285,14 @@ function buildNextBestActions(claim: Claim & { intel: ClaimIntel }, tier: Recove
   }
 
   if (primary?.appeal_eligible) {
-    const nextLevel = intel.appeals.length > 0 ? `Level ${Math.min(3, intel.appeals.length + 1)}` : 'Level 1';
+    const nextLevel =
+      intel.appeals.length > 0
+        ? `Level ${Math.min(3, intel.appeals.length + 1)}`
+        : 'Level 1';
+
     actions.push(`Prepare ${nextLevel} appeal packet.`);
+  } else if (primary?.correction_eligible || primary?.resubmission_eligible) {
+    actions.push('Correct and resubmit before entering formal appeal workflow.');
   } else if (primary) {
     actions.push('Validate whether correction/resubmission is available before appeal effort.');
   }
@@ -298,14 +311,15 @@ function buildNextBestActions(claim: Claim & { intel: ClaimIntel }, tier: Recove
 export function explainRecoverability(claim: Claim & { intel: ClaimIntel }): RecoveryExplanation {
   const intel = claim.intel;
   const factors: RecoveryFactor[] = [];
-
   const primary = intel.denial_events[0];
 
   const baseFromDenials =
     intel.denial_events.length > 0
       ? Math.round(
-          intel.denial_events.reduce((sum, denial) => sum + denial.recoverability_score, 0) /
-            intel.denial_events.length,
+          intel.denial_events.reduce(
+            (sum, denial) => sum + denial.recoverability_score,
+            0,
+          ) / intel.denial_events.length,
         )
       : intel.reimbursement_state === 'paid'
         ? 100
@@ -340,7 +354,7 @@ export function explainRecoverability(claim: Claim & { intel: ClaimIntel }): Rec
   const appealReadiness = clamp(
     score +
       (docRisk === 'LOW' ? 10 : docRisk === 'MEDIUM' ? -5 : -20) +
-      (primary?.appeal_eligible ? 8 : -5),
+      (primary?.appeal_eligible ? 8 : primary?.correction_eligible || primary?.resubmission_eligible ? 2 : -5),
   );
 
   const recovery_barriers = buildRecoveryBarriers(claim);
@@ -357,9 +371,13 @@ export function explainRecoverability(claim: Claim & { intel: ClaimIntel }): Rec
     tier === 'HIGH'
       ? primary?.appeal_eligible
         ? `File ${
-            intel.appeals.length > 0 ? `Level ${Math.min(3, intel.appeals.length + 1)}` : 'Level 1'
+            intel.appeals.length > 0
+              ? `Level ${Math.min(3, intel.appeals.length + 1)}`
+              : 'Level 1'
           } appeal with evidence packet.`
-        : 'Correct and resubmit if payer rules allow.'
+        : primary?.correction_eligible || primary?.resubmission_eligible
+          ? 'Correct and resubmit through the fastest payer-accepted path.'
+          : 'Escalate for payer-specific recovery review.'
       : tier === 'MEDIUM'
         ? 'Close documentation gaps, verify deadlines, then appeal or resubmit.'
         : intel.aging_days > 120
