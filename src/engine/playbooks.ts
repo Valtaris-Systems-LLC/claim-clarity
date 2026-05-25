@@ -3,9 +3,9 @@
  *
  * For every denial category, a playbook defines the recommended
  * sequence of operational moves, required evidence, appeal strategy,
- * effort estimate, and expected recovery probability.  Pure data +
- * pure functions — every recommendation is explainable.
+ * effort estimate, and expected recovery probability.
  */
+
 import type { DenialCategory, DenialEvent, ClaimIntel } from '@/types/clarity';
 import type { Claim } from '@/types/claim';
 
@@ -22,7 +22,7 @@ export interface Playbook {
   category: DenialCategory;
   title: string;
   summary: string;
-  base_recovery_probability: number; // 0-1
+  base_recovery_probability: number;
   effort: Effort;
   estimated_minutes: number;
   required_evidence: string[];
@@ -39,206 +39,298 @@ export const PLAYBOOKS: Record<DenialCategory, Playbook> = {
     title: 'Missing / Invalid Authorization',
     summary: 'Recover claims denied for missing precertification by surfacing existing auth or filing a retro-auth.',
     base_recovery_probability: 0.72,
-    effort: 'MEDIUM', estimated_minutes: 35,
+    effort: 'MEDIUM',
+    estimated_minutes: 35,
     required_evidence: ['Prior authorization number', 'Auth request documentation', 'Medical records supporting necessity'],
-    appeal_strategy: 'Reconsideration with attached auth reference; if no auth, file retro-auth with clinical justification before formal appeal.',
+    appeal_strategy: 'Reconsideration with attached auth reference; if no auth exists, file retro-auth with clinical justification before formal appeal.',
     steps: [
-      { order: 1, action: 'Search EMR + payer portal for an existing auth covering the dates of service.', owner: 'Authorization Team', rationale: 'Most auth denials are administrative — the auth exists but was not transmitted on the claim.' },
-      { order: 2, action: 'If auth exists, attach reference number and resubmit corrected claim.', owner: 'Billing', rationale: 'Cheapest recovery — no formal appeal needed.' },
-      { order: 3, action: 'If no auth, request retro-authorization with clinical documentation.', owner: 'Clinical Liaison', rationale: 'Most commercial payers allow retro-auth within 30-90 days when medically justified.' },
-      { order: 4, action: 'If retro-auth denied, file Level 1 appeal citing medical necessity and absence of patient harm from administrative gap.', owner: 'Appeals', rationale: 'Auth-denied claims with strong clinical support are overturned at ~60% on appeal.' },
+      { order: 1, action: 'Search EMR and payer portal for existing auth covering DOS.', owner: 'Authorization Team', rationale: 'Many auth denials are administrative.' },
+      { order: 2, action: 'Attach authorization reference and resubmit corrected claim.', owner: 'Billing', rationale: 'Fastest recovery path.' },
+      { order: 3, action: 'If no auth exists, request retro-auth with clinical documentation.', owner: 'Clinical Liaison', rationale: 'Creates an appealable administrative record.' },
     ],
-    escalation_path: 'Escalate to payer provider rep + JOC after two unsuccessful appeals.',
+    escalation_path: 'Escalate to payer provider rep after failed retro-auth or repeated denial.',
   }),
+
   medical_necessity: PB({
     category: 'medical_necessity',
     title: 'Medical Necessity Denial',
-    summary: 'Clinical appeal supported by LCD/NCD citations, peer-reviewed evidence, and a physician letter.',
+    summary: 'Clinical appeal supported by LCD/NCD citations, payer policy, and physician rationale.',
     base_recovery_probability: 0.55,
-    effort: 'HIGH', estimated_minutes: 90,
-    required_evidence: ['Complete clinical chart', 'Physician letter of medical necessity', 'LCD/NCD citation', 'Peer-reviewed literature (optional)'],
-    appeal_strategy: 'Level 1 with clinical letter; if denied, escalate to peer-to-peer review before Level 2.',
+    effort: 'HIGH',
+    estimated_minutes: 90,
+    required_evidence: ['Complete clinical chart', 'Physician letter of medical necessity', 'LCD/NCD citation', 'Payer medical policy'],
+    appeal_strategy: 'Submit clinical appeal; if denied, escalate to peer-to-peer review.',
     steps: [
-      { order: 1, action: 'Pull the full chart for the date(s) of service.', owner: 'Clinical Liaison', rationale: 'Payers reject partial documentation outright.' },
-      { order: 2, action: 'Cite the applicable LCD/NCD or payer medical policy that supports the service.', owner: 'Clinical Liaison', rationale: 'Anchoring to payer-published policy moves the conversation to objective criteria.' },
-      { order: 3, action: 'Draft physician letter explaining clinical decision making.', owner: 'Clinical', rationale: 'Physician voice carries weight in medical necessity reviews.' },
-      { order: 4, action: 'Submit Level 1 appeal packet.', owner: 'Appeals', rationale: 'Most overturns happen at Level 1 when documentation is complete.' },
-      { order: 5, action: 'Request peer-to-peer review if denied.', owner: 'Clinical', rationale: 'P2P bypasses written review and gets a physician-level decision.' },
+      { order: 1, action: 'Pull complete clinical chart.', owner: 'Clinical Liaison', rationale: 'Partial documentation weakens the appeal.' },
+      { order: 2, action: 'Cite applicable LCD/NCD or payer policy.', owner: 'Clinical', rationale: 'Policy citation creates objective appeal footing.' },
+      { order: 3, action: 'Submit physician-supported appeal packet.', owner: 'Appeals', rationale: 'Medical necessity denials need clinical authority.' },
     ],
-    escalation_path: 'External IRO review or state insurance commissioner complaint if exhausted internally.',
+    escalation_path: 'Peer-to-peer review, external review, or payer medical director escalation.',
   }),
+
   timely_filing: PB({
     category: 'timely_filing',
     title: 'Timely Filing',
-    summary: 'Only recoverable if you can prove on-time original submission. Otherwise write off.',
+    summary: 'Recoverable only when proof of timely original submission exists.',
     base_recovery_probability: 0.18,
-    effort: 'LOW', estimated_minutes: 15,
-    required_evidence: ['Clearinghouse acknowledgement (999/277CA)', 'Original claim image', 'Payer EDI receipt'],
-    appeal_strategy: 'Appeal only with clearinghouse confirmation. Without proof, do not waste cycles.',
+    effort: 'LOW',
+    estimated_minutes: 15,
+    required_evidence: ['Clearinghouse acknowledgement', 'Original claim image', 'Payer EDI receipt'],
+    appeal_strategy: 'Appeal only with proof of original timely submission.',
     steps: [
-      { order: 1, action: 'Pull clearinghouse acknowledgement for the original submission.', owner: 'Billing', rationale: 'A 277CA accepted within filing window is sufficient proof at most payers.' },
-      { order: 2, action: 'If proof exists, file appeal with EDI receipt attached.', owner: 'Appeals', rationale: 'Payers routinely reverse timely filing denials when EDI proof is presented.' },
-      { order: 3, action: 'If no proof, recommend write-off and root-cause the gap.', owner: 'Billing Lead', rationale: 'Pursuing without proof has near-zero ROI and creates appeal-cycle waste.' },
+      { order: 1, action: 'Pull clearinghouse acknowledgement.', owner: 'Billing', rationale: 'Proof is required to overturn filing denial.' },
+      { order: 2, action: 'Appeal with EDI receipt if available.', owner: 'Appeals', rationale: 'Payer denial can be reversed with submission proof.' },
+      { order: 3, action: 'If no proof exists, write off and root-cause.', owner: 'Billing Lead', rationale: 'Low ROI without evidence.' },
     ],
-    escalation_path: 'Provider rep dispute if clearinghouse confirms acceptance but payer denies receipt.',
+    escalation_path: 'Provider rep dispute if payer denies receipt despite clearinghouse proof.',
   }),
+
   missing_documentation: PB({
     category: 'missing_documentation',
     title: 'Documentation Deficiency',
-    summary: 'Identify the missing field from RARC, attach, and resubmit within timely window.',
-    base_recovery_probability: 0.80,
-    effort: 'LOW', estimated_minutes: 20,
-    required_evidence: ['Op note', 'Itemised bill', 'Requested documentation per RARC'],
-    appeal_strategy: 'Corrected resubmission rather than formal appeal — keeps the claim in original adjudication track.',
+    summary: 'Identify missing documentation, attach it, and resubmit within the filing window.',
+    base_recovery_probability: 0.8,
+    effort: 'LOW',
+    estimated_minutes: 20,
+    required_evidence: ['Requested documentation per payer', 'Operative note', 'Itemized bill', 'Medical records'],
+    appeal_strategy: 'Corrected resubmission is preferred before formal appeal.',
     steps: [
-      { order: 1, action: 'Read the RARC and payer message to identify exactly what is missing.', owner: 'Billing', rationale: 'Most doc-deficient denials specify the missing item; do not guess.' },
-      { order: 2, action: 'Retrieve the document from EMR/HIM and attach.', owner: 'HIM', rationale: 'Avoids re-requesting from providers.' },
-      { order: 3, action: 'Resubmit as a corrected claim (frequency code 7).', owner: 'Billing', rationale: 'Faster turnaround than appeal track.' },
+      { order: 1, action: 'Read payer message/RARC to identify exact missing item.', owner: 'Billing', rationale: 'Avoids guessing.' },
+      { order: 2, action: 'Retrieve documentation from HIM/EMR.', owner: 'HIM', rationale: 'Evidence completion is the blocker.' },
+      { order: 3, action: 'Resubmit corrected claim with attachment.', owner: 'Billing', rationale: 'Usually faster than appeal.' },
     ],
-    escalation_path: 'Escalate to payer rep if rejected after corrected submission.',
+    escalation_path: 'Escalate to payer rep if corrected claim is rejected again.',
   }),
+
+  medical_record_request: PB({
+    category: 'medical_record_request',
+    title: 'Medical Record Request',
+    summary: 'Payer requested records before adjudication can continue.',
+    base_recovery_probability: 0.78,
+    effort: 'MEDIUM',
+    estimated_minutes: 30,
+    required_evidence: ['Medical records', 'Clinical notes', 'Operative note', 'Payer request letter'],
+    appeal_strategy: 'Not an appeal yet — complete the record request and track response.',
+    steps: [
+      { order: 1, action: 'Identify requested record scope.', owner: 'HIM', rationale: 'Over/under-sending records can delay payment.' },
+      { order: 2, action: 'Attach records with claim and payer request reference.', owner: 'Billing', rationale: 'Creates clean audit trail.' },
+      { order: 3, action: 'Set payer follow-up date.', owner: 'Billing', rationale: 'Record requests can stall without follow-up.' },
+    ],
+    escalation_path: 'Escalate to payer rep if no adjudication after records are supplied.',
+  }),
+
   coding: PB({
     category: 'coding',
     title: 'Coding Error',
-    summary: 'Coder review of dx/procedure alignment and modifier usage, then corrected resubmission.',
+    summary: 'Coder review of diagnosis/procedure alignment, then corrected resubmission.',
     base_recovery_probability: 0.68,
-    effort: 'MEDIUM', estimated_minutes: 30,
-    required_evidence: ['Op note', 'ICD-10 documentation', 'Coding worksheet'],
-    appeal_strategy: 'Corrected claim with coder rationale; appeal only if payer rejects the recoded version.',
+    effort: 'MEDIUM',
+    estimated_minutes: 30,
+    required_evidence: ['Operative note', 'ICD-10 documentation', 'Coding worksheet'],
+    appeal_strategy: 'Corrected claim first; appeal only if corrected claim is rejected.',
     steps: [
-      { order: 1, action: 'Coding QA re-reviews dx/procedure linkage and modifier usage.', owner: 'Coding QA', rationale: 'Catches the highest-impact corrections before resubmission.' },
-      { order: 2, action: 'Resubmit corrected claim with frequency code 7.', owner: 'Billing', rationale: 'Bypasses appeal queue.' },
-      { order: 3, action: 'If still denied, file appeal with coder narrative.', owner: 'Appeals', rationale: 'Many coding denials reverse with a written rationale.' },
+      { order: 1, action: 'Review diagnosis/procedure linkage.', owner: 'Coding QA', rationale: 'Most coding denials are correctable.' },
+      { order: 2, action: 'Resubmit corrected claim.', owner: 'Billing', rationale: 'Avoids unnecessary appeal queue.' },
+      { order: 3, action: 'Appeal with coder narrative if rejected.', owner: 'Appeals', rationale: 'Creates payer-facing rationale.' },
     ],
-    escalation_path: 'Compliance review if payer disputes well-supported coding repeatedly.',
+    escalation_path: 'Compliance review for repeated payer disagreement.',
   }),
+
   eligibility: PB({
     category: 'eligibility',
     title: 'Eligibility Dispute',
-    summary: 'Re-verify coverage, correct demographics, redirect to actual payer if needed.',
+    summary: 'Re-verify coverage, correct demographics, or redirect to correct payer.',
     base_recovery_probability: 0.35,
-    effort: 'LOW', estimated_minutes: 18,
+    effort: 'LOW',
+    estimated_minutes: 18,
     required_evidence: ['Eligibility verification', 'Member ID card', 'Subscriber confirmation'],
-    appeal_strategy: 'Eligibility appeals rarely succeed; the better play is fast redirection to the correct payer.',
+    appeal_strategy: 'Eligibility appeals rarely succeed; correction or redirection is usually better.',
     steps: [
-      { order: 1, action: 'Re-run eligibility for the date of service.', owner: 'Eligibility', rationale: 'Most eligibility denials are demographic mismatches.' },
-      { order: 2, action: 'Correct member/subscriber data and resubmit.', owner: 'Billing', rationale: 'Resolves the majority of these denials administratively.' },
-      { order: 3, action: 'If coverage truly terminated, redirect to active payer or patient.', owner: 'Patient Access', rationale: 'Protects timely filing on the correct payer.' },
+      { order: 1, action: 'Re-run eligibility for DOS.', owner: 'Eligibility', rationale: 'Verifies coverage reality.' },
+      { order: 2, action: 'Correct member/subscriber data.', owner: 'Billing', rationale: 'Fixes demographic mismatch.' },
+      { order: 3, action: 'Redirect to active payer if terminated.', owner: 'Patient Access', rationale: 'Protects timely filing.' },
     ],
-    escalation_path: 'Patient Access workflow review to prevent recurrence.',
+    escalation_path: 'Patient Access workflow review.',
   }),
+
   cob: PB({
     category: 'cob',
     title: 'Coordination of Benefits',
     summary: 'Obtain primary EOB and resubmit as secondary with proper COB allocation.',
     base_recovery_probability: 0.82,
-    effort: 'MEDIUM', estimated_minutes: 40,
-    required_evidence: ['Primary EOB (or 835)', 'COB questionnaire', 'Coverage hierarchy verification'],
-    appeal_strategy: 'COB rejections almost always resolve with primary EOB — do not file formal appeal until secondary resubmission is rejected.',
+    effort: 'MEDIUM',
+    estimated_minutes: 40,
+    required_evidence: ['Primary EOB', 'COB questionnaire', 'Coverage hierarchy verification'],
+    appeal_strategy: 'COB denials typically resolve through secondary resubmission with primary EOB.',
     steps: [
-      { order: 1, action: 'Identify primary payer from OHI indicators or member call.', owner: 'COB', rationale: 'Most COB denials stem from primary payer not on file.' },
-      { order: 2, action: 'Obtain primary EOB / 835.', owner: 'COB', rationale: 'Required for secondary adjudication.' },
-      { order: 3, action: 'Resubmit secondary with primary allocation and source document attached.', owner: 'Billing', rationale: 'Triggers secondary adjudication path.' },
+      { order: 1, action: 'Identify primary payer.', owner: 'COB', rationale: 'COB denial usually means payer order is unresolved.' },
+      { order: 2, action: 'Obtain primary EOB.', owner: 'COB', rationale: 'Required for secondary adjudication.' },
+      { order: 3, action: 'Resubmit secondary claim with primary allocation.', owner: 'Billing', rationale: 'Triggers secondary payment logic.' },
     ],
-    escalation_path: 'Provider rep escalation if secondary continues to deny despite valid primary EOB.',
+    escalation_path: 'Payer rep escalation if secondary denies despite valid primary EOB.',
   }),
+
+  coordination_of_benefits: PB({
+    category: 'coordination_of_benefits',
+    title: 'Coordination of Benefits',
+    summary: 'Resolve payer primacy and submit primary EOB for secondary adjudication.',
+    base_recovery_probability: 0.82,
+    effort: 'MEDIUM',
+    estimated_minutes: 40,
+    required_evidence: ['Primary EOB', 'COB questionnaire', 'Coverage hierarchy verification'],
+    appeal_strategy: 'Resolve COB documentation before formal appeal.',
+    steps: [
+      { order: 1, action: 'Confirm payer order.', owner: 'COB', rationale: 'Primacy controls adjudication.' },
+      { order: 2, action: 'Attach primary EOB.', owner: 'COB', rationale: 'Secondary payer needs prior payer result.' },
+      { order: 3, action: 'Resubmit with COB allocation.', owner: 'Billing', rationale: 'Best recovery path.' },
+    ],
+    escalation_path: 'Escalate persistent COB mismatch to payer rep.',
+  }),
+
   modifier: PB({
     category: 'modifier',
     title: 'Modifier Error',
-    summary: 'Coder review for correct modifier (25/59/LT/RT) and corrected resubmission.',
+    summary: 'Coder review for correct modifier and corrected resubmission.',
     base_recovery_probability: 0.74,
-    effort: 'LOW', estimated_minutes: 22,
-    required_evidence: ['Op note', 'CPT modifier guidance', 'NCCI edit lookup'],
-    appeal_strategy: 'Resubmit corrected with proper modifier; formal appeal only if payer disputes documentation.',
+    effort: 'LOW',
+    estimated_minutes: 22,
+    required_evidence: ['Operative note', 'CPT modifier guidance', 'NCCI edit lookup'],
+    appeal_strategy: 'Resubmit corrected with appropriate modifier before appeal.',
     steps: [
-      { order: 1, action: 'Coder confirms correct modifier per documentation.', owner: 'Coding', rationale: 'Most modifier denials are clerical.' },
-      { order: 2, action: 'Resubmit corrected claim.', owner: 'Billing', rationale: 'Faster than appeal track.' },
+      { order: 1, action: 'Confirm correct modifier.', owner: 'Coding', rationale: 'Most modifier denials are clerical or rule-based.' },
+      { order: 2, action: 'Resubmit corrected claim.', owner: 'Billing', rationale: 'Faster than appeal.' },
     ],
-    escalation_path: 'NCCI edit dispute if modifier is appropriate but payer disagrees with bundling.',
+    escalation_path: 'Coding compliance review for repeated payer disagreement.',
   }),
+
   duplicate: PB({
     category: 'duplicate',
     title: 'Duplicate Claim',
-    summary: 'Confirm true duplicate vs. distinct service; modifier 76/77 + documentation if distinct.',
-    base_recovery_probability: 0.30,
-    effort: 'LOW', estimated_minutes: 12,
+    summary: 'Confirm true duplicate vs distinct repeat service.',
+    base_recovery_probability: 0.3,
+    effort: 'LOW',
+    estimated_minutes: 12,
     required_evidence: ['Original claim ID', 'Service documentation proving distinct event'],
-    appeal_strategy: 'Resubmit with modifier 76/77 + documentation, not formal appeal.',
+    appeal_strategy: 'Only pursue if documentation proves service is distinct.',
     steps: [
-      { order: 1, action: 'Compare to prior submission for the same DOS / member.', owner: 'Billing', rationale: 'Distinguish true duplicate from repeat procedure.' },
-      { order: 2, action: 'If distinct, add modifier 76/77 and attach documentation.', owner: 'Coding', rationale: 'Standard mechanism for repeat services.' },
-      { order: 3, action: 'If true duplicate, write off.', owner: 'Billing Lead', rationale: 'Cost of pursuit exceeds recovery.' },
+      { order: 1, action: 'Compare against prior submission.', owner: 'Billing', rationale: 'Determines true duplicate.' },
+      { order: 2, action: 'If distinct, resubmit with appropriate modifier/documentation.', owner: 'Coding', rationale: 'Creates payable distinction.' },
+      { order: 3, action: 'If true duplicate, write off.', owner: 'Billing Lead', rationale: 'No recovery path.' },
     ],
-    escalation_path: 'None — write off if no distinguishing evidence.',
+    escalation_path: 'None unless payer incorrectly groups separate services.',
   }),
+
   contractual: PB({
     category: 'contractual',
     title: 'Contractual Adjustment',
-    summary: 'Write off per fee schedule unless underpayment is detected against contract terms.',
+    summary: 'Write off unless paid amount is below contract.',
     base_recovery_probability: 0.05,
-    effort: 'LOW', estimated_minutes: 5,
+    effort: 'LOW',
+    estimated_minutes: 5,
     required_evidence: ['Contract fee schedule'],
-    appeal_strategy: 'No appeal. Open underpayment recovery only if paid amount is below contracted rate.',
+    appeal_strategy: 'No appeal unless underpayment is detected.',
     steps: [
-      { order: 1, action: 'Verify paid amount against contracted fee schedule.', owner: 'Contract Mgmt', rationale: 'Distinguishes contractual write-off from underpayment.' },
-      { order: 2, action: 'If correct, post adjustment. Otherwise open underpayment workflow.', owner: 'Billing', rationale: 'Avoids treating underpayment as standard contractual.' },
+      { order: 1, action: 'Verify payment against contract.', owner: 'Contract Mgmt', rationale: 'Separates correct adjustment from underpayment.' },
+      { order: 2, action: 'Post adjustment or open underpayment dispute.', owner: 'Billing', rationale: 'Correct closure path.' },
     ],
-    escalation_path: 'Contract management review for systemic underpayment patterns.',
+    escalation_path: 'Contracting review for systemic variance.',
   }),
+
   bundled: PB({
     category: 'bundled',
     title: 'NCCI Bundling',
-    summary: 'If services are clinically distinct, append modifier 59/XU with documentation.',
+    summary: 'If clinically distinct, append correct modifier with documentation.',
     base_recovery_probability: 0.48,
-    effort: 'MEDIUM', estimated_minutes: 30,
-    required_evidence: ['Op note', 'NCCI edit research', 'Anatomic / temporal distinction notes'],
-    appeal_strategy: 'Corrected resubmission with unbundling modifier and documentation rationale.',
+    effort: 'MEDIUM',
+    estimated_minutes: 30,
+    required_evidence: ['Operative note', 'NCCI edit research', 'Anatomic / temporal distinction notes'],
+    appeal_strategy: 'Corrected resubmission with unbundling rationale.',
     steps: [
-      { order: 1, action: 'Confirm NCCI edit applies and modifier override is allowed.', owner: 'Coding QA', rationale: 'Some edits are non-overridable; do not waste cycles.' },
-      { order: 2, action: 'Append 59 / XE / XS / XP / XU modifier with documentation.', owner: 'Coding', rationale: 'X-modifiers are increasingly required over generic 59.' },
-      { order: 3, action: 'Resubmit corrected; appeal if denied.', owner: 'Billing', rationale: 'Two-step approach minimises appeal queue.' },
+      { order: 1, action: 'Confirm whether edit is overrideable.', owner: 'Coding QA', rationale: 'Some edits cannot be overridden.' },
+      { order: 2, action: 'Append appropriate modifier with documentation.', owner: 'Coding', rationale: 'Supports distinct service.' },
+      { order: 3, action: 'Resubmit corrected claim.', owner: 'Billing', rationale: 'Best first action.' },
     ],
-    escalation_path: 'Coding compliance review if patterns suggest systemic edits.',
+    escalation_path: 'Compliance review for systemic bundling disputes.',
   }),
+
   coverage: PB({
     category: 'coverage',
     title: 'Non-Covered Service',
-    summary: 'Verify benefits per SPD; appeal with SPD citation, otherwise bill patient or write off.',
+    summary: 'Verify plan benefit language and appeal only when plan supports coverage.',
     base_recovery_probability: 0.25,
-    effort: 'MEDIUM', estimated_minutes: 30,
+    effort: 'MEDIUM',
+    estimated_minutes: 30,
     required_evidence: ['Summary Plan Description excerpt', 'Plan benefit grid'],
-    appeal_strategy: 'Appeal with SPD evidence; if truly excluded, route to patient billing or write-off.',
+    appeal_strategy: 'Appeal with plan document support; otherwise bill patient or write off.',
     steps: [
-      { order: 1, action: 'Pull SPD for date of service.', owner: 'Billing', rationale: 'Plan terms govern; payer may misapply exclusion.' },
-      { order: 2, action: 'Appeal with SPD citation if covered.', owner: 'Appeals', rationale: 'Plan-document arguments are the highest-leverage appeal angle.' },
-      { order: 3, action: 'Otherwise transfer to patient responsibility or write off.', owner: 'Billing', rationale: 'Close the loop; do not leave in limbo.' },
+      { order: 1, action: 'Pull SPD/benefit evidence.', owner: 'Billing', rationale: 'Coverage is governed by plan language.' },
+      { order: 2, action: 'Appeal if benefit language supports coverage.', owner: 'Appeals', rationale: 'Plan-document appeals are strongest.' },
+      { order: 3, action: 'Route to patient responsibility/write-off if excluded.', owner: 'Billing', rationale: 'Avoids limbo.' },
     ],
     escalation_path: 'External review for plan-document disputes.',
   }),
+
+  benefit_limit: PB({
+    category: 'benefit_limit',
+    title: 'Benefit Limit',
+    summary: 'Validate whether the plan limit was applied correctly.',
+    base_recovery_probability: 0.22,
+    effort: 'MEDIUM',
+    estimated_minutes: 25,
+    required_evidence: ['Benefit maximum', 'Accumulator history', 'Plan document'],
+    appeal_strategy: 'Appeal only if payer misapplied accumulator or limit.',
+    steps: [
+      { order: 1, action: 'Verify benefit maximum and accumulator.', owner: 'Billing', rationale: 'Determines if limit is real.' },
+      { order: 2, action: 'Appeal with accumulator evidence if incorrect.', owner: 'Appeals', rationale: 'Shows payer math error.' },
+      { order: 3, action: 'Close if benefit exhausted correctly.', owner: 'Billing', rationale: 'No recovery path.' },
+    ],
+    escalation_path: 'Plan sponsor/payer rep if accumulator mismatch persists.',
+  }),
+
   underpayment: PB({
     category: 'underpayment',
     title: 'Underpayment Recovery',
-    summary: 'Cite contract fee schedule and request reprocessing for the variance.',
-    base_recovery_probability: 0.70,
-    effort: 'MEDIUM', estimated_minutes: 25,
+    summary: 'Cite contract fee schedule and request reprocessing for variance.',
+    base_recovery_probability: 0.7,
+    effort: 'MEDIUM',
+    estimated_minutes: 25,
     required_evidence: ['Contract fee schedule', 'EOB / 835', 'Variance calculation'],
-    appeal_strategy: 'Contractual dispute (not clinical appeal); attach contract excerpt.',
+    appeal_strategy: 'Contractual dispute, not clinical appeal.',
     steps: [
-      { order: 1, action: 'Compute variance: contracted allowable vs. paid.', owner: 'Contract Mgmt', rationale: 'Quantifies the dispute objectively.' },
-      { order: 2, action: 'Submit underpayment dispute citing contract terms.', owner: 'Billing', rationale: 'Most payers honour clear contract math without formal appeal.' },
-      { order: 3, action: 'Escalate to provider rep if not reprocessed in 30 days.', owner: 'Revenue Cycle Lead', rationale: 'Aging underpayments compound and indicate systemic issues.' },
+      { order: 1, action: 'Compute contracted allowable vs paid.', owner: 'Contract Mgmt', rationale: 'Quantifies dispute.' },
+      { order: 2, action: 'Submit underpayment dispute.', owner: 'Billing', rationale: 'Requests reprocessing.' },
+      { order: 3, action: 'Escalate if not reprocessed in 30 days.', owner: 'Revenue Cycle Lead', rationale: 'Prevents aging underpayments.' },
     ],
-    escalation_path: 'JOC + payer contracting team for recurring underpayment patterns.',
+    escalation_path: 'JOC / payer contracting team for recurring variance.',
+  }),
+
+  unknown: PB({
+    category: 'unknown',
+    title: 'Unmapped Denial',
+    summary: 'Research payer message and classify before pursuing.',
+    base_recovery_probability: 0.3,
+    effort: 'MEDIUM',
+    estimated_minutes: 20,
+    required_evidence: ['Payer message', 'EOB / 835', 'Claim image'],
+    appeal_strategy: 'Do not appeal blindly; classify root cause first.',
+    steps: [
+      { order: 1, action: 'Review payer message and EOB detail.', owner: 'Billing', rationale: 'Unknown denials need classification.' },
+      { order: 2, action: 'Map to operational category.', owner: 'Billing Lead', rationale: 'Routes work correctly.' },
+      { order: 3, action: 'Apply matching playbook.', owner: 'Assigned Owner', rationale: 'Prevents generic appeals.' },
+    ],
+    escalation_path: 'Add mapping to denial taxonomy once root cause is confirmed.',
   }),
 };
 
 export interface PlaybookRecommendation {
   playbook: Playbook;
-  expected_recovery_probability: number; // adjusted for claim signals
+  expected_recovery_probability: number;
   adjustment_factors: Array<{ label: string; delta: number; detail: string }>;
   effort: Effort;
   estimated_minutes: number;
-  identified_gaps: string[]; // missing evidence specific to this claim
+  identified_gaps: string[];
+  confidence_band: 'LOW' | 'MEDIUM' | 'HIGH';
+  expected_recovery_cents: number;
 }
 
 export function recommendPlaybook(
@@ -247,44 +339,104 @@ export function recommendPlaybook(
 ): PlaybookRecommendation | null {
   const primary = denial ?? claim.intel.denial_events[0];
   if (!primary) return null;
-  const pb = PLAYBOOKS[primary.category];
-  if (!pb) return null;
 
+  const pb = PLAYBOOKS[primary.category] ?? PLAYBOOKS.unknown;
   const adjustments: PlaybookRecommendation['adjustment_factors'] = [];
-  let prob = pb.base_recovery_probability;
 
-  if (claim.intel.aging_days > 120) { adjustments.push({ label: 'Aging', delta: -0.20, detail: `${claim.intel.aging_days}d past timely filing window` }); prob -= 0.20; }
-  else if (claim.intel.aging_days > 90) { adjustments.push({ label: 'Aging', delta: -0.10, detail: `${claim.intel.aging_days}d` }); prob -= 0.10; }
-  else if (claim.intel.aging_days < 30)  { adjustments.push({ label: 'Aging', delta: +0.05, detail: 'Fresh — full appeal window' }); prob += 0.05; }
+  let probability = pb.base_recovery_probability;
 
-  if (claim.intel.evidence_missing.length > 0) {
-    const d = -0.05 * Math.min(claim.intel.evidence_missing.length, 4);
-    adjustments.push({ label: 'Evidence gap', delta: d, detail: `${claim.intel.evidence_missing.length} required item(s) missing` });
-    prob += d;
+  if (claim.intel.aging_days > 120) {
+    adjustments.push({ label: 'Aging', delta: -0.2, detail: `${claim.intel.aging_days} days old` });
+    probability -= 0.2;
+  } else if (claim.intel.aging_days > 90) {
+    adjustments.push({ label: 'Aging', delta: -0.1, detail: `${claim.intel.aging_days} days old` });
+    probability -= 0.1;
+  } else if (claim.intel.aging_days < 30) {
+    adjustments.push({ label: 'Aging', delta: 0.05, detail: 'Fresh claim with full appeal window' });
+    probability += 0.05;
   }
 
-  const priorDenied = claim.intel.appeals.filter(a => a.status === 'denied').length;
-  if (priorDenied > 0) { adjustments.push({ label: 'Prior appeals', delta: -0.10 * priorDenied, detail: `${priorDenied} prior denial(s)` }); prob -= 0.10 * priorDenied; }
+  const evidenceMissing = claim.intel.evidence_missing.length;
 
-  if (claim.intel.payer_class === 'medicaid') { adjustments.push({ label: 'Payer', delta: -0.05, detail: 'Medicaid: stricter doc rules' }); prob -= 0.05; }
-  if (claim.intel.payer_class === 'medicare') { adjustments.push({ label: 'Payer', delta: +0.03, detail: 'Medicare: rule-based adjudication' }); prob += 0.03; }
+  if (evidenceMissing > 0) {
+    const penalty = Math.min(0.2, evidenceMissing * 0.05);
+    adjustments.push({ label: 'Evidence Gap', delta: -penalty, detail: `${evidenceMissing} evidence item(s) missing` });
+    probability -= penalty;
+  } else {
+    adjustments.push({ label: 'Evidence Complete', delta: 0.05, detail: 'Required documentation already present' });
+    probability += 0.05;
+  }
 
-  const identified_gaps = pb.required_evidence.filter(e =>
-    claim.intel.evidence_missing.some(m => m.toLowerCase().includes(e.toLowerCase().split(' ')[0]))
+  const priorDenied = claim.intel.appeals.filter((a) => a.status === 'denied').length;
+  const priorApproved = claim.intel.appeals.filter((a) => a.status === 'approved').length;
+
+  if (priorDenied > 0) {
+    const penalty = Math.min(0.3, priorDenied * 0.1);
+    adjustments.push({ label: 'Appeal Fatigue', delta: -penalty, detail: `${priorDenied} prior denied appeal(s)` });
+    probability -= penalty;
+  }
+
+  if (priorApproved > 0) {
+    const boost = Math.min(0.15, priorApproved * 0.05);
+    adjustments.push({ label: 'Historical Success', delta: boost, detail: `${priorApproved} successful appeal(s)` });
+    probability += boost;
+  }
+
+  if (claim.intel.amount_at_risk_cents >= 500_000) {
+    adjustments.push({ label: 'High Value Claim', delta: 0.05, detail: 'Operational priority and management attention' });
+    probability += 0.05;
+  }
+
+  if (claim.intel.payer_class === 'medicare') {
+    adjustments.push({ label: 'Payer Behavior', delta: 0.03, detail: 'Medicare adjudication tends to be predictable' });
+    probability += 0.03;
+  }
+
+  if (claim.intel.payer_class === 'medicaid') {
+    adjustments.push({ label: 'Payer Behavior', delta: -0.05, detail: 'Medicaid often requires additional documentation' });
+    probability -= 0.05;
+  }
+
+  if (claim.intel.payer_class === 'commercial') {
+    adjustments.push({ label: 'Payer Behavior', delta: 0.02, detail: 'Commercial payer appeal paths available' });
+    probability += 0.02;
+  }
+
+  if (primary.recoverability_score >= 80) {
+    adjustments.push({ label: 'Recoverability', delta: 0.05, detail: 'Strong denial recovery profile' });
+    probability += 0.05;
+  }
+
+  if (primary.recoverability_score <= 25) {
+    adjustments.push({ label: 'Recoverability', delta: -0.1, detail: 'Historically difficult denial type' });
+    probability -= 0.1;
+  }
+
+  probability = Math.max(0, Math.min(1, probability));
+
+  const identified_gaps = pb.required_evidence.filter((req) =>
+    claim.intel.evidence_missing.some((missing) =>
+      missing.toLowerCase().includes(req.split(' ')[0].toLowerCase()),
+    ),
   );
+
+  const confidence_band =
+    probability >= 0.7 ? 'HIGH' : probability >= 0.4 ? 'MEDIUM' : 'LOW';
 
   return {
     playbook: pb,
-    expected_recovery_probability: Math.max(0, Math.min(1, prob)),
+    expected_recovery_probability: probability,
     adjustment_factors: adjustments,
     effort: pb.effort,
     estimated_minutes: pb.estimated_minutes,
     identified_gaps,
+    confidence_band,
+    expected_recovery_cents: Math.round(claim.intel.amount_at_risk_cents * probability),
   };
 }
 
 export const EFFORT_CLS: Record<Effort, string> = {
-  LOW:    'bg-status-paid/10 text-status-paid border-status-paid/30',
+  LOW: 'bg-status-paid/10 text-status-paid border-status-paid/30',
   MEDIUM: 'bg-status-pending/10 text-status-pending border-status-pending/30',
-  HIGH:   'bg-status-denied/10 text-status-denied border-status-denied/30',
+  HIGH: 'bg-status-denied/10 text-status-denied border-status-denied/30',
 };
