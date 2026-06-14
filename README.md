@@ -1,165 +1,264 @@
-# DualPay
+DualPay
 
-**A deterministic, auditable health-insurance claim adjudication kernel — built for COB-heavy multi-payer scenarios where every cent must be explainable.**
+A deterministic, auditable claim adjudication kernel built for multi-payer healthcare environments where every rule, calculation, and payment decision must be explainable.
 
----
+⸻
 
-## The Problem
+Why DualPay Exists
 
-Health-plan core admin systems treat adjudication as a black box: claims go in, dollars come out, and when a member or provider disputes an EOB nobody on the operations floor can reconstruct *why* the math landed where it did. COB cases compound the pain — primary/secondary primacy gets misapplied, accumulators drift, retro-adjustments cascade silently across linked claims, and call centers spend hours stitching together explanations from PDFs and tribal knowledge. The cost is denials, rework, regulatory exposure, and member trust.
+Most claim systems can tell you what happened.
 
----
+Few can tell you why it happened.
 
-## Solution
+When a claim is denied, repriced, coordinated across multiple payers, or recalculated after a retroactive adjustment, operations teams often rely on screenshots, PDFs, institutional knowledge, and manual investigation to reconstruct the decision.
 
-DualPay is an adjudication engine with an inspector UI on top. Every claim run produces a structured, hashable trace — every input, rule fired, branch taken, and dollar movement is recorded — so any outcome can be replayed, diffed, and explained in plain language. Multi-payer COB primacy, session accumulators, and retro-recalculation across linked cases are first-class. Math is integer-cents and deterministic; the same inputs always produce the same trace.
+DualPay was designed to solve that problem.
 
----
+Every adjudication produces a structured audit artifact that records:
 
-## Key Capabilities
+* Inputs used
+* Rules fired
+* Calculation steps
+* COB determinations
+* Accumulator impacts
+* Financial outcomes
 
-| Capability | What It Actually Does | Status |
-|---|---|---|
-| **Adjudication Engine** | Allowed → deductible → copay → coinsurance → OOP-cap waterfall in integer cents, idempotent per `run_id` | `Stable` |
-| **COB / Multi-Payer** | Birthday/Gender/Custodial primacy + secondary allocation (lower-of, COB savings, non-duplication) | `Stable` |
-| **Trace & Explainability** | Structured `TraceObject` per run with human-readable explanation generator | `Stable` |
-| **State Machine** | 16 explicit transitions with guards (`REQUIRE_PRIMACY_CONFIRMATION`, `REQUIRE_IDEMPOTENCY_KEY`) + visual diagram | `Stable` |
-| **Case Management** | N-claim → 1-case linking, cross-claim accumulator rollup, retro-recalc with field-level diff viewer | `Stable` |
-| **Persistence** | Claims, runs, traces, cases, events, accumulators stored in Postgres with RLS | `Beta` |
-| **Coverage Graph (DAG)** | Member coverage spans with confidence + primacy edges | `Planned` |
-| **Migration Cockpit** | Legacy_Paid vs DualPay_Paid discrepancy detector, variance > $0.01 flagging | `Planned` |
-| **AuthN / RBAC + Audit Log** | Role-based access, HIPAA-grade audit trail | `Planned` |
-| **EDI Ingestion** (837/835/270/271) | Real payer integration | `Planned` |
+The objective is not simply claim processing.
 
-> `Stable` = production-ready · `Beta` = functional, API may shift · `Planned` = committed, not started
+The objective is explainable claim processing.
 
----
+⸻
 
-## Architecture
+What DualPay Is
 
-```
-Claim ──► CalculationEngine ──► AdjudicationRun ──► TraceObject
-   │            │                      │
-   │            ▼                      ▼
-   │       COB Rules              Explainability
-   │            │
-   ▼            ▼
-StateMachine  Case ──► RetroRecalc ──► AdjudicationDiff
-                │
-                ▼
-       AccumulatorImpact
-                │
-                ▼
-          Postgres (managed)
-```
+DualPay is a deterministic claim adjudication engine with an operational review surface built around traceability, coordination of benefits, and auditability.
 
-**Decisions worth understanding:**
+The platform combines:
 
-| Decision | Why | What I ruled out |
-|---|---|---|
-| Integer-cents math throughout | No float drift, byte-exact reproducibility across runs | JS `number` floats, `Decimal` libs (overkill for cents) |
-| Pure engine functions, persistence at the edge | Engine is replayable and unit-testable without a DB | Mixing repository calls into adjudication logic |
-| Structured `TraceObject` (not log lines) | Hashable, diffable, machine-replayable | Free-text logs, OpenTelemetry spans (wrong abstraction for business audit) |
-| Managed Postgres with RLS | Zero-infra persistence with row-level security built in | Self-hosted Postgres, in-memory only |
-| `JSONB` payloads alongside indexed columns | Schema flexibility for evolving claim/trace shapes without migrations per change | Strict normalized schema, document DB |
+* A pure-function adjudication kernel
+* Multi-payer COB logic
+* Structured trace generation
+* Case linking and retro-recalculation workflows
+* Adjudication review tooling
+* Persistent audit artifacts
 
----
+Every adjudication run produces both:
 
-## Stack
+1. A financial outcome
+2. A complete explanation of how that outcome was produced
 
-| Layer | Choice |
-|---|---|
-| **UI** | React 18 + TypeScript 5 |
-| **Styling** | Tailwind CSS v3 + shadcn-ui |
-| **Build** | Vite 5 |
-| **Backend** | Lovable Cloud (managed Postgres + Auth + Storage) |
-| **Database** | PostgreSQL with Row-Level Security |
-| **Testing** | Vitest |
+⸻
 
----
+Core Capabilities
 
-## Getting Started
+Capability	Description	Status
+Adjudication Engine	Allowed amount, deductible, copay, coinsurance, COB adjustments, OOP protection	Stable
+Coordination of Benefits	Birthday rule, custodial rule, gender rule, secondary allocation strategies	Stable
+Trace Generation	Structured rule firings, math steps, version pins, audit metadata	Stable
+Explainability	Human-readable adjudication review and inspection workflows	Stable
+State Machine	Explicit workflow transitions with guard enforcement	Stable
+Case Management	Multi-claim linkage, accumulator rollups, retro-recalculation support	Stable
+Persistence Layer	Claims, traces, runs, events, accumulators, cases stored in Postgres	Beta
+Audit Exports	Exportable adjudication artifacts and trace data	Beta
+Coverage Graph	Coverage relationship modeling and dependency visualization	Planned
+Migration Cockpit	Legacy vs DualPay adjudication comparison tooling	Planned
+EDI Integration	837 / 835 / 270 / 271 workflows	Planned
 
-### Prerequisites
+⸻
 
-| Tool | Version |
-|---|---|
-| Node.js | `>= 20 LTS` |
-| npm or bun | latest |
+Key Design Principles
 
-### Local Setup
+Deterministic Adjudication
 
-```bash
-# Install
-npm ci
+Financial calculations are performed in integer cents.
 
-# Start dev server
-npm run dev
-```
+The same claim inputs produce the same adjudication outcome and calculation path.
 
-Open `http://localhost:5173`. The managed Postgres backend is provisioned automatically — no local Docker required. On first run, the app seeds 3 demo claims, accumulators, and a linked case.
+No floating-point drift.
 
----
+No hidden calculations.
 
-## Configuration
+No side effects.
 
-Environment variables are managed automatically by Lovable Cloud and written to `.env`. Do not edit `.env` by hand.
+⸻
 
-| Variable | Source | Description |
-|---|---|---|
-| `VITE_SUPABASE_URL` | auto | Lovable Cloud Postgres URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | auto | Public anon key |
-| `VITE_SUPABASE_PROJECT_ID` | auto | Project ref |
+Structured Traceability
 
----
+Traditional systems emit logs.
 
-## Usage
+DualPay emits structured trace objects.
 
-Open the dashboard at `/`. The left rail lists claims; selecting one opens the adjudication panel with:
+Each trace contains:
 
-- **Trace viewer** — every rule fired, in order, with dollar deltas
-- **State diagram** — current claim status with live guard evaluation
-- **Case panel** — linked claims, accumulator rollup, retro-recalc with diff viewer
+* Rule execution history
+* Calculation steps
+* Version metadata
+* Input fingerprints
+* Explanation fragments
 
-All state survives refresh (persisted to Postgres).
+This allows adjudication outcomes to be inspected, compared, and audited.
 
----
+⸻
 
-## Testing
+Pure Business Logic
 
-```bash
-npm run test       # Vitest — engine + COB + state machine
-```
+The adjudication kernel contains no persistence concerns.
 
-Engine tests cover multi-payer scenarios (deductible + coinsurance, COB primacy, secondary allocation) and must pass before any UI work.
+Business logic executes independently from storage and infrastructure layers.
 
----
+Benefits:
 
-## Roadmap
+* Easier testing
+* Greater reproducibility
+* Simpler audits
+* Lower operational complexity
 
-| Phase | What | Status |
-|---|---|---|
-| **Phase 1** | Persistence (done), AuthN + RBAC + Audit Log, Coverage Graph DAG, Migration Cockpit | 🟡 In progress |
-| **Phase 2** | EDI ingestion (837/835/270/271), real prior-payer parser, pricing & contracts engine, NCCI/MUE edits | 🔵 Planned |
-| **Phase 3** | Work queues, SLAs, payments (check/EFT + 835 remit), denial analytics | 🔵 Planned |
-| **Phase 4** | Member + provider portals, observability, HIPAA compliance hardening | 🔵 Planned |
+⸻
 
-**Honest completeness vs. a full Facets-parity Core Admin OS: ~30%.** The engine spine is real and trustworthy. The operational surface area (integrations, workflows, security, ops) is the next several phases of work.
+Explainability First
 
----
+Every financial outcome should be explainable.
 
-## Operational Context
+If a human reviewer cannot determine why a decision occurred, the system is incomplete.
 
-DualPay was designed for environments where:
-- auditability is non-negotiable (regulator and member-facing)
-- workflows cross multiple payers and span weeks
-- operators need explainable outcomes, not black-box decisions
-- retro-adjustments and reversals create cascading financial risk
+DualPay prioritizes:
 
-## System Philosophy
+* Visibility
+* Auditability
+* Operational confidence
 
-This project prioritizes:
-- deterministic workflows over opaque automation
-- explainability over magic
-- operational visibility over hidden state
-- replayability over forensic reconstruction
+over automation that cannot be justified.
+
+⸻
+
+Architecture
+
+Claim
+  │
+  ▼
+Calculation Engine
+  │
+  ├── Pricing
+  ├── COB Rules
+  ├── Deductible Logic
+  ├── Coinsurance Logic
+  ├── OOP Protection
+  │
+  ▼
+Adjudication Run
+  │
+  ▼
+Trace Object
+  │
+  ├── Rule Firings
+  ├── Math Steps
+  ├── Version Pins
+  └── Audit Metadata
+  │
+  ▼
+Case Management
+  │
+  ▼
+Persistence Layer
+
+⸻
+
+Technology Stack
+
+Layer	Technology
+Frontend	React 18
+Language	TypeScript 5
+Styling	Tailwind CSS + shadcn/ui
+Build System	Vite
+Database	PostgreSQL
+Security	Row-Level Security (RLS)
+Testing	Vitest
+Hosting	Lovable Cloud
+
+⸻
+
+Current State
+
+DualPay is not a full core-administration platform.
+
+It is an adjudication-focused system centered on transparency, explainability, and coordination-of-benefits workflows.
+
+Current strengths include:
+
+* Deterministic adjudication
+* COB processing
+* Structured trace generation
+* Audit-oriented review workflows
+* Case linkage and retro-recalculation
+* Multi-tenant persistence architecture
+
+Areas still under active development include:
+
+* Replay infrastructure
+* EDI integrations
+* Expanded compliance tooling
+* Coverage graph modeling
+* Migration tooling
+* Advanced operational workflows
+
+⸻
+
+Testing
+
+npm run test
+
+The adjudication kernel includes automated tests covering:
+
+* Fee schedule pricing
+* Deductible application
+* Coinsurance calculations
+* Coordination of Benefits
+* OOP protection
+* Trace generation
+* Deterministic hashing
+
+⸻
+
+Roadmap
+
+Phase 1
+
+* Authentication and authorization hardening
+* Expanded audit exports
+* Coverage graph modeling
+* Migration cockpit
+
+Phase 2
+
+* EDI integrations
+* Pricing and contract expansion
+* NCCI and MUE support
+* Prior payer normalization
+
+Phase 3
+
+* Workflow orchestration
+* Work queues
+* SLA management
+* Payment processing support
+
+Phase 4
+
+* Member and provider experiences
+* Observability platform
+* Compliance hardening
+* Replay infrastructure
+
+⸻
+
+System Philosophy
+
+DualPay prioritizes:
+
+* Deterministic workflows over opaque automation
+* Explainability over black-box decisions
+* Traceability over assumptions
+* Operational visibility over hidden state
+* Auditability over convenience
+
+Every claim decision should be understandable, reproducible, and defensible.
