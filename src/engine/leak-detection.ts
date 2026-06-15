@@ -67,19 +67,39 @@ function recurringByCategory(claims: C[]): LeakPattern[] {
 
 function recommendationForCategory(cat: DenialCategory): string {
   switch (cat) {
-    case 'authorization': return 'Tighten pre-auth workflow: confirm auth captured before scheduling for affected service types.';
-    case 'missing_documentation': return 'Standardize documentation checklists at point of service; block submission if mandatory fields missing.';
-    case 'coding': return 'Coder QA review on affected procedure codes; refresh LCD/NCCI guidance.';
-    case 'modifier': return 'Coder education on modifier 25/59 application; auto-suggest modifiers in claim scrubber.';
-    case 'medical_necessity': return 'Engage clinical to template LMN; cite supporting LCDs at submission.';
-    case 'timely_filing': return 'Audit clearinghouse pipeline for stuck claims; widen daily submission monitor.';
-    case 'cob': return 'COB verification at intake; persist primary EOB before secondary submission.';
-    case 'eligibility': return 'Run real-time 270/271 at every check-in; flag termed coverage before service.';
-    case 'duplicate': return 'Add pre-submission duplicate scrubber; require modifier 76/77 with documentation when re-billing.';
-    case 'bundled': return 'NCCI edit check in scrubber; bundle-aware billing rules.';
-    case 'underpayment': return 'Compare 835 paid amount to contract fee schedule; auto-open underpayment recovery cases.';
-    case 'contractual': return 'No recovery — verify fee schedule current; renegotiate at contract cycle.';
-    case 'coverage': return 'SPD review on affected service lines; align patient financial counseling.';
+    case 'authorization':
+      return 'Tighten pre-auth workflow: confirm auth captured before scheduling for affected service types.';
+    case 'missing_documentation':
+      return 'Standardize documentation checklists at point of service; block submission if mandatory fields missing.';
+    case 'coding':
+      return 'Coder QA review on affected procedure codes; refresh LCD/NCCI guidance.';
+    case 'modifier':
+      return 'Coder education on modifier 25/59 application; auto-suggest modifiers in claim scrubber.';
+    case 'medical_necessity':
+      return 'Engage clinical to template LMN; cite supporting LCDs at submission.';
+    case 'timely_filing':
+      return 'Audit clearinghouse pipeline for stuck claims; widen daily submission monitor.';
+    case 'cob':
+    case 'coordination_of_benefits':
+      return 'COB verification at intake; persist primary EOB before secondary submission.';
+    case 'eligibility':
+      return 'Run real-time 270/271 at every check-in; flag termed coverage before service.';
+    case 'duplicate':
+      return 'Add pre-submission duplicate scrubber; require modifier 76/77 with documentation when re-billing.';
+    case 'bundled':
+      return 'NCCI edit check in scrubber; bundle-aware billing rules.';
+    case 'underpayment':
+      return 'Compare 835 paid amount to contract fee schedule; auto-open underpayment recovery cases.';
+    case 'contractual':
+      return 'No recovery — verify fee schedule current; renegotiate at contract cycle.';
+    case 'coverage':
+      return 'SPD review on affected service lines; align patient financial counseling.';
+    case 'benefit_limit':
+      return 'Validate accumulator history and plan maximums; appeal only if the payer misapplied the benefit limit.';
+    case 'medical_record_request':
+      return 'Create medical-record request queue; attach records and track payer response deadlines.';
+    case 'unknown':
+      return 'Research payer message, classify the denial, then route to the matching recovery playbook.';
   }
 }
 
