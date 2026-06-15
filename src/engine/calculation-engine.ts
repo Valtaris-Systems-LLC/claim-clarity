@@ -264,48 +264,43 @@ export function adjudicateLine(
   let coinsuranceBeforeOop = 0;
   let copayBeforeOop = 0;
 
-const copayApplies =
-  !!plan.copay_amount &&
-  plan.copay_applies_to?.includes(line.procedure_code);
+  const copayApplies =
+    !!plan.copay_amount &&
+    plan.copay_applies_to?.includes(line.procedure_code);
 
-if (copayApplies) {
-  copayBeforeOop = Math.min(
-    plan.copay_amount,
-    afterDeductible,
-  );
+  if (copayApplies) {
+    copayBeforeOop = Math.min(plan.copay_amount, afterDeductible);
 
-  adjustments.push({
-    reason_code: 'COPAY',
-    amount: copayBeforeOop,
-    category: 'copay',
-  });
-} else {
-  coinsuranceBeforeOop = roundCents(
-    afterDeductible * plan.coinsurance_rate,
-  );
-
-  if (coinsuranceBeforeOop > 0) {
     adjustments.push({
-      reason_code: 'COINSURANCE',
-      amount: coinsuranceBeforeOop,
-      category: 'coinsurance',
+      reason_code: 'COPAY',
+      amount: copayBeforeOop,
+      category: 'copay',
     });
+  } else {
+    coinsuranceBeforeOop = roundCents(afterDeductible * plan.coinsurance_rate);
 
-    ruleFirings.push(
-      createRuleFiring(
-        ruleFirings.length,
-        'COINSURANCE_001',
-        'coinsurance',
-        {
-          after_deductible: afterDeductible,
-          rate: plan.coinsurance_rate,
-        },
-        { coinsurance: coinsuranceBeforeOop },
-        ['frag_coinsurance_applied'],
-      ),
-    );
+    if (coinsuranceBeforeOop > 0) {
+      adjustments.push({
+        reason_code: 'COINSURANCE',
+        amount: coinsuranceBeforeOop,
+        category: 'coinsurance',
+      });
+
+      ruleFirings.push(
+        createRuleFiring(
+          ruleFirings.length,
+          'COINSURANCE_001',
+          'coinsurance',
+          {
+            after_deductible: afterDeductible,
+            rate: plan.coinsurance_rate,
+          },
+          { coinsurance: coinsuranceBeforeOop },
+          ['frag_coinsurance_applied'],
+        ),
+      );
+    }
   }
-}
 
   const memberRespBeforeOop = roundCents(
     deductibleApplicable + coinsuranceBeforeOop + copayBeforeOop,
@@ -320,9 +315,7 @@ if (copayApplies) {
   const coinsurance = coinsuranceBeforeOop;
   const copay = copayBeforeOop;
 
-  const planPaid = roundCents(
-    Math.max(0, amountForCostSharing - memberResp),
-  );
+  const planPaid = roundCents(Math.max(0, amountForCostSharing - memberResp));
 
   if (oopOverflow > 0) {
     adjustments.push({
@@ -414,6 +407,7 @@ export function adjudicateClaim(
         contract_version: contract.contract_version,
       }),
     );
+
   const sortedLines = sortLines(lines);
   const lineOrder = sortedLines.map((line) => line.line_id);
 
