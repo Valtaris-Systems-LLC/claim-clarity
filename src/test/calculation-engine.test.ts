@@ -336,7 +336,10 @@ describe('CalculationEngine', () => {
 
       expect(result.allowed).toBe(18000);
       expect(result.cob_allocations.length).toBeGreaterThan(0);
-
+      expect(result.cob_allocations[0].paid).toBe(13600);
+      expect(result.cob_allocations[0].adjustment).toBe(1000);
+      expect(result.plan_paid).toBe(3520);
+      expect(result.member_responsibility).toBe(880);
       const cobRules = trace.rule_firings.filter(
         (rule) => rule.category === 'cob_allocation',
       );
