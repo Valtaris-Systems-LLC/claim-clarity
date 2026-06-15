@@ -25,9 +25,24 @@ const CALC_POLICY_VERSION = '1.0.0';
 
 let idCounter = 0;
 
-export function generateId(prefix: string): string {
+function hashSeed(seed: string): string {
+  let hash = 2166136261;
+
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export function generateId(prefix: string, seed?: string): string {
+  if (seed) {
+    return `${prefix}_${hashSeed(seed)}`;
+  }
+
   idCounter++;
-  return `${prefix}_${Date.now()}_${idCounter}`;
+  return `${prefix}_${idCounter.toString().padStart(6, '0')}`;
 }
 
 export function resetIdCounter(): void {
