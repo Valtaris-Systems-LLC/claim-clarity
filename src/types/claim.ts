@@ -1,7 +1,5 @@
 import type { ClaimIntel, WorkflowOwner } from './clarity';
 
-// Core domain types for DualPay adjudication
-
 export interface ClaimLine {
   line_id: string;
   claim_id: string;
@@ -15,6 +13,7 @@ export interface ClaimLine {
   place_of_service: string;
   rendering_provider_npi?: string;
   revenue_code?: string;
+  benefit_category?: string;
 }
 
 export interface Claim {
@@ -147,6 +146,15 @@ export interface PriorAdjustment {
   group_code: string;
 }
 
+export type AdjudicationLineStatus =
+  | 'paid'
+  | 'denied'
+  | 'adjusted'
+  | 'deductible_applied'
+  | 'copay_applied'
+  | 'coinsurance_applied'
+  | 'cob_adjusted';
+
 export interface AdjudicationLineResult {
   line_id: string;
   claim_id: string;
@@ -158,7 +166,7 @@ export interface AdjudicationLineResult {
   member_responsibility: number;
   adjustments: AdjustmentDetail[];
   cob_allocations: COBAllocation[];
-  status: 'paid' | 'denied' | 'adjusted';
+  status: AdjudicationLineStatus;
   denial_reasons?: string[];
 }
 
@@ -172,6 +180,8 @@ export interface AdjustmentDetail {
     | 'coinsurance'
     | 'copay'
     | 'cob'
+    | 'oop_max'
+    | 'benefit_limit'
     | 'other';
 }
 
@@ -210,4 +220,7 @@ export interface AdjudicationRun {
 
   trace_id: string;
   calc_policy_version: string;
+
+  idempotency_key?: string;
+  replay_of_trace_id?: string;
 }
