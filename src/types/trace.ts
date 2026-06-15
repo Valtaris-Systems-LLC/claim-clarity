@@ -1,12 +1,5 @@
 /**
  * Trace schema — every adjudication MUST produce a Trace Object.
- *
- * The trace is the audit spine for Claim Clarity / DualPay:
- * - what inputs were used
- * - which rules fired
- * - how line-level math was calculated
- * - what source evidence supported each value
- * - which versions were pinned at runtime
  */
 
 export interface TraceObject {
@@ -15,30 +8,30 @@ export interface TraceObject {
   claim_id: string;
   timestamp: string;
 
-  // Trace schema metadata
   trace_schema_version?: string;
 
-  // Version pins
   rule_set_version: string;
   plan_version: string;
   contract_version: string;
   calc_policy_version: string;
 
-  // Inputs snapshot
   inputs_snapshot_hash: string;
   snapshot_ref: string;
 
-  // Rule firings ordered by execution
   rule_firings: RuleFiring[];
-
-  // Math steps per line
   math_steps: MathStep[];
-
-  // Source badges per key value
   source_badges: SourceBadge[];
 
-  // Trace quality summary
   trace_quality?: TraceQuality;
+  replay_metadata?: ReplayMetadata;
+}
+
+export interface ReplayMetadata {
+  replayable: boolean;
+  replay_blockers: string[];
+  input_scope: 'partial' | 'full';
+  deterministic_ids: boolean;
+  deterministic_timestamps: boolean;
 }
 
 export interface TraceQuality {
@@ -75,7 +68,9 @@ export type RuleCategory =
   | 'recoverability'
   | 'appeal_readiness'
   | 'evidence'
-  | 'payer_behavior';
+  | 'payer_behavior'
+  | 'replay'
+  | 'audit';
 
 export interface MathStep {
   line_id: string;
@@ -109,7 +104,6 @@ export interface SourceBadge {
   document_ref?: string;
 }
 
-// Explainability fragment library
 export interface ExplanationFragment {
   fragment_id: string;
   internal_code: string;
@@ -119,7 +113,6 @@ export interface ExplanationFragment {
   detail_level: 0 | 1 | 2 | 3;
 }
 
-// CARC/RARC mapping
 export interface CARCRARCMapping {
   external_carc: string;
   external_rarc?: string;
