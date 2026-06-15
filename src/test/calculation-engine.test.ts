@@ -7,7 +7,7 @@ import {
   initSessionAccumulator,
 } from '@/engine/calculation-engine';
 import { hashInputs } from '@/engine/trace-builder';
-import { determineCOBPrimacy, birthdayRule, calculateCOBAllocation } from '@/engine/cob-rules';
+import { determineCOBPrimacy, birthdayRule } from '@/engine/cob-rules';
 import type {
   ClaimLine,
   MemberAccumulators,
@@ -215,6 +215,39 @@ describe('CalculationEngine', () => {
       expect(run.line_processing_order).toEqual(['L1', 'L2']);
     });
 
+    it('copay replaces coinsurance when configured for the procedure', () => {
+      const lines = [
+        makeClaimLine({
+          line_id: 'COPAY1',
+          procedure_code: '99213',
+          billed_amount: 15000,
+        }),
+      ];
+
+      const acc = makeAccumulators({
+        individual_deductible_used: 100000,
+      });
+
+      const contract = makeContract();
+      const plan = makePlan({
+        coinsurance_rate: 0.2,
+        copay_amount: 2500,
+        copay_applies_to: ['99213'],
+      });
+
+      const { run } = adjudicateClaim(lines, acc, contract, plan);
+
+      const result = run.line_results[0];
+
+      expect(result.allowed).toBe(12000);
+      expect(result.deductible_applied).toBe(0);
+      expect(result.copay).toBe(2500);
+      expect(result.coinsurance).toBe(0);
+      expect(result.member_responsibility).toBe(2500);
+      expect(result.plan_paid).toBe(9500);
+      expect(result.plan_paid + result.member_responsibility).toBe(result.allowed);
+    });
+
     it('enforces the remaining out-of-pocket maximum on member responsibility', () => {
       const lines = [
         makeClaimLine({
@@ -340,6 +373,7 @@ describe('CalculationEngine', () => {
       expect(result.cob_allocations[0].adjustment).toBe(1000);
       expect(result.plan_paid).toBe(3520);
       expect(result.member_responsibility).toBe(880);
+
       const cobRules = trace.rule_firings.filter(
         (rule) => rule.category === 'cob_allocation',
       );
@@ -390,7 +424,7 @@ describe('CalculationEngine', () => {
       expect(result.plan_paid).toBe(0);
       expect(result.member_responsibility).toBe(0);
       expect(result.cob_allocations[0].adjustment).toBe(0);
-});
+    });
   });
 
   describe('COB Primacy Rules', () => {
