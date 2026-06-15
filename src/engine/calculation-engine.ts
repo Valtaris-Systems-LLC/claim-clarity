@@ -261,8 +261,28 @@ export function adjudicateLine(
     );
   }
 
-  const coinsuranceBeforeOop = roundCents(afterDeductible * plan.coinsurance_rate);
-  const planShareAfterCoins = afterDeductible - coinsuranceBeforeOop;
+let coinsuranceBeforeOop = 0;
+let copayBeforeOop = 0;
+
+const copayApplies =
+  !!plan.copay_amount &&
+  plan.copay_applies_to?.includes(line.procedure_code);
+
+if (copayApplies) {
+  copayBeforeOop = Math.min(
+    plan.copay_amount,
+    afterDeductible,
+  );
+
+  adjustments.push({
+    reason_code: 'COPAY',
+    amount: copayBeforeOop,
+    category: 'copay',
+  });
+} else {
+  coinsuranceBeforeOop = roundCents(
+    afterDeductible * plan.coinsurance_rate,
+  );
 
   if (coinsuranceBeforeOop > 0) {
     adjustments.push({
@@ -285,18 +305,7 @@ export function adjudicateLine(
       ),
     );
   }
-
-  let copayBeforeOop = 0;
-
-  if (plan.copay_amount && plan.copay_applies_to?.includes(line.procedure_code)) {
-    copayBeforeOop = Math.min(plan.copay_amount, amountForCostSharing);
-
-    adjustments.push({
-      reason_code: 'COPAY',
-      amount: copayBeforeOop,
-      category: 'copay',
-    });
-  }
+}
 
   const memberRespBeforeOop = roundCents(
     deductibleApplicable + coinsuranceBeforeOop + copayBeforeOop,
