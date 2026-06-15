@@ -394,7 +394,17 @@ export function adjudicateClaim(
   priorOutcomes: PriorPayerOutcome[] = [],
   runId?: string,
 ): { run: AdjudicationRun; trace: TraceObject } {
-  const rid = runId ?? generateId('run');
+  const rid =
+  runId ??
+  generateId(
+    'run',
+    JSON.stringify({
+      claim_id: lines[0]?.claim_id ?? 'unknown',
+      line_ids: sortLines(lines).map((line) => line.line_id),
+      plan_version: plan.plan_version,
+      contract_version: contract.contract_version,
+    }),
+  );
   const sortedLines = sortLines(lines);
   const lineOrder = sortedLines.map((line) => line.line_id);
 
