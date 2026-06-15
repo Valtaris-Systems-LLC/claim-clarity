@@ -10,7 +10,7 @@ import { generateId } from './calculation-engine';
 
 const RULE_SET_VERSION = '1.0.0';
 const CALC_POLICY_VERSION = '1.0.0';
-const TRACE_SCHEMA_VERSION = '1.1.0';
+const TRACE_SCHEMA_VERSION = '1.2.0';
 
 export function createRuleFiring(
   order: number,
@@ -250,15 +250,6 @@ export function buildTrace(
   mathSteps: MathStep[],
   sourceBadges: SourceBadge[] = [],
 ): TraceObject {
-  const traceId = generateId('trace');
-
-  const inputsHash = hashInputs({
-    plan,
-    contract,
-    rule_set_version: RULE_SET_VERSION,
-    calc_policy_version: CALC_POLICY_VERSION,
-  });
-
   const orderedRuleFirings = [...ruleFirings].sort((a, b) => a.order - b.order);
 
   const normalizedMathSteps = mathSteps.map((step) =>
@@ -276,6 +267,18 @@ export function buildTrace(
     ),
   );
 
+  const inputsHash = hashInputs({
+    claim_id: claimId,
+    run_id: runId,
+    plan,
+    contract,
+    rule_set_version: RULE_SET_VERSION,
+    calc_policy_version: CALC_POLICY_VERSION,
+    rule_firings: orderedRuleFirings,
+    math_steps: normalizedMathSteps,
+  });
+
+  const traceId = generateId('trace', inputsHash);
   const quality = buildTraceQuality(orderedRuleFirings, normalizedMathSteps, sourceBadges);
 
   return {
@@ -298,5 +301,16 @@ export function buildTrace(
 
     trace_schema_version: TRACE_SCHEMA_VERSION,
     trace_quality: quality,
+    replay_metadata: {
+      replayable: false,
+      replay_blockers: [
+        'Full original adjudication input payload is not persisted yet.',
+        'Run and trace timestamps are not injected deterministically yet.',
+        'Plan and contract bodies are hashed but not stored as immutable versioned snapshots.',
+      ],
+      input_scope: 'partial',
+      deterministic_ids: true,
+      deterministic_timestamps: false,
+    },
   } as TraceObject;
 }
