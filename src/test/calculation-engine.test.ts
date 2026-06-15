@@ -387,7 +387,10 @@ describe('CalculationEngine', () => {
 
       expect(result.allowed).toBe(12000);
       expect(result.cob_allocations[0].method).toBe('non_duplication');
-    });
+      expect(result.plan_paid).toBe(0);
+      expect(result.member_responsibility).toBe(0);
+      expect(result.cob_allocations[0].adjustment).toBe(0);
+});
   });
 
   describe('COB Primacy Rules', () => {
