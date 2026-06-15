@@ -121,52 +121,42 @@ export function calculateCOBAllocation(
   allocations: COBAllocation[];
 } {
   const totalPriorPaid = priorOutcomes.reduce((sum, po) => sum + po.paid, 0);
+  const totalPriorPatientResp = priorOutcomes.reduce(
+    (sum, po) => sum + po.patient_responsibility,
+    0,
+  );
+
   const allocations: COBAllocation[] = [];
-  let adjustment = 0;
+
+  let secondaryPayable = 0;
 
   if (cobPolicy === 'standard') {
-    // Standard: pay up to allowed minus what primary paid
-    adjustment = 0;
-    for (const po of priorOutcomes) {
-      allocations.push({
-        payer_id: po.payer_id,
-        payer_order: 1,
-        allowed: po.allowed,
-        paid: po.paid,
-        adjustment: 0,
-        method: 'standard',
-      });
-    }
+    secondaryPayable = Math.min(
+      Math.max(0, allowed - totalPriorPaid),
+      Math.max(0, totalPriorPatientResp),
+    );
   } else if (cobPolicy === 'non_duplication') {
-    // Non-duplication: secondary pays nothing if primary paid >= secondary's allowed
-    if (totalPriorPaid >= allowed) {
-      adjustment = allowed; // No payment from secondary
-    }
-    for (const po of priorOutcomes) {
-      allocations.push({
-        payer_id: po.payer_id,
-        payer_order: 1,
-        allowed: po.allowed,
-        paid: po.paid,
-        adjustment: totalPriorPaid >= allowed ? allowed : 0,
-        method: 'non_duplication',
-      });
-    }
+    secondaryPayable = Math.max(0, allowed - totalPriorPaid);
   } else if (cobPolicy === 'maintenance_of_benefits') {
-    // MOB: secondary pays the difference between what it would have paid as primary minus what primary actually paid
-    const secondaryWouldPay = allowed; // simplified
-    adjustment = Math.max(0, totalPriorPaid);
-    for (const po of priorOutcomes) {
-      allocations.push({
-        payer_id: po.payer_id,
-        payer_order: 1,
-        allowed: po.allowed,
-        paid: po.paid,
-        adjustment: Math.max(0, po.paid),
-        method: 'maintenance_of_benefits',
-      });
-    }
+    secondaryPayable = Math.max(0, allowed - totalPriorPaid);
   }
 
-  return { total_prior_paid: totalPriorPaid, adjustment, allocations };
+  const adjustment = Math.max(0, allowed - totalPriorPaid - secondaryPayable);
+
+  for (const po of priorOutcomes) {
+    allocations.push({
+      payer_id: po.payer_id,
+      payer_order: 1,
+      allowed: po.allowed,
+      paid: po.paid,
+      adjustment,
+      method: cobPolicy,
+    });
+  }
+
+  return {
+    total_prior_paid: totalPriorPaid,
+    adjustment,
+    allocations,
+  };
 }
