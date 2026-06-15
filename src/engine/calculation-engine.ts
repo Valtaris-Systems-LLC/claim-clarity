@@ -264,11 +264,11 @@ export function adjudicateLine(
   let coinsuranceBeforeOop = 0;
   let copayBeforeOop = 0;
 
-  const copayApplies =
+const copayApplies =
   !!plan.copay_amount &&
   plan.copay_applies_to?.includes(line.procedure_code);
 
-  if (copayApplies) {
+if (copayApplies) {
   copayBeforeOop = Math.min(
     plan.copay_amount,
     afterDeductible,
@@ -403,7 +403,7 @@ export function adjudicateClaim(
   priorOutcomes: PriorPayerOutcome[] = [],
   runId?: string,
 ): { run: AdjudicationRun; trace: TraceObject } {
-    const rid =
+  const rid =
     runId ??
     generateId(
       'run',
