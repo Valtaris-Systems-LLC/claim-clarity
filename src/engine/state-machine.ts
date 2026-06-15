@@ -17,6 +17,7 @@ export interface TransitionContext {
   hasPrimacyConfirmation?: boolean;
   hasExceptionOverride?: boolean;
   hasIdempotencyKey?: boolean;
+  idempotencyKey?: string;
   hasPaymentAmount?: boolean;
   hasDenialReason?: boolean;
   hasReviewNote?: boolean;
@@ -57,18 +58,17 @@ export interface StatusTransition {
   category: 'intake' | 'cob' | 'adjudication' | 'payment' | 'post_payment' | 'terminal';
 }
 
-// ── Guards ────────────────────────────────────────────────────
-
 const requirePrimacyConfirmation: TransitionGuard = {
   id: 'REQUIRE_PRIMACY_CONFIRMATION',
-  description: 'COB-routed claims require primacy confirmation or audited exception override before adjudication/payment.',
+  description:
+    'COB-routed claims require primacy confirmation or audited exception override before adjudication/payment.',
   check: (ctx) => Boolean(ctx.hasPrimacyConfirmation || ctx.hasExceptionOverride),
 };
 
 const requireIdempotencyKey: TransitionGuard = {
   id: 'REQUIRE_IDEMPOTENCY_KEY',
-  description: 'Payment actions require an idempotency key to prevent duplicate payouts.',
-  check: (ctx) => Boolean(ctx.hasIdempotencyKey),
+  description: 'Payment-impacting actions require an external idempotency key.',
+  check: (ctx) => Boolean(ctx.hasIdempotencyKey && ctx.idempotencyKey),
 };
 
 const requirePaymentAmount: TransitionGuard = {
@@ -94,8 +94,6 @@ const noGuard: TransitionGuard = {
   description: 'No additional checks required.',
   check: () => true,
 };
-
-// ── Transition Definitions ────────────────────────────────────
 
 export const CLAIM_TRANSITIONS: StatusTransition[] = [
   { from: 'RECEIVED', to: 'ELIGIBILITY_CHECK', guards: [noGuard], label: 'Begin eligibility', category: 'intake' },
@@ -129,7 +127,13 @@ export const CLAIM_TRANSITIONS: StatusTransition[] = [
     category: 'payment',
   },
 
-  { from: 'PAID', to: 'REVERSED', guards: [requireReviewNote], label: 'Reverse payment', category: 'post_payment' },
+  {
+    from: 'PAID',
+    to: 'REVERSED',
+    guards: [requireIdempotencyKey, requireReviewNote],
+    label: 'Reverse payment',
+    category: 'post_payment',
+  },
   { from: 'PAID', to: 'ADJUSTED', guards: [requireReviewNote], label: 'Adjust claim', category: 'post_payment' },
   { from: 'REVERSED', to: 'IN_ADJUDICATION', guards: [requireReviewNote], label: 'Re-adjudicate reversed claim', category: 'adjudication' },
   { from: 'ADJUSTED', to: 'IN_ADJUDICATION', guards: [requireReviewNote], label: 'Re-adjudicate adjusted claim', category: 'adjudication' },
@@ -149,8 +153,6 @@ export const ALL_STATUSES: ClaimStatus[] = [
   'REVERSED',
   'ADJUSTED',
 ];
-
-// ── Engine Functions ──────────────────────────────────────────
 
 export function getValidTransitions(currentStatus: ClaimStatus): StatusTransition[] {
   return CLAIM_TRANSITIONS.filter((transition) => transition.from === currentStatus);
@@ -203,8 +205,8 @@ export function canTransition(context: TransitionContext): TransitionResult {
   }
 
   const allowed = failedGuards.length === 0;
-  const idempotencyKey = context.hasIdempotencyKey
-    ? `idem-${context.claimId}-${context.targetStatus}-${context.timestamp || at}`
+  const idempotencyKey = allowed && context.idempotencyKey
+    ? context.idempotencyKey
     : undefined;
 
   return {
