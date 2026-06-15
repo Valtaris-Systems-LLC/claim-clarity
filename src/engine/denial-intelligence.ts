@@ -19,8 +19,6 @@ import type {
   AgingBucket,
 } from '@/types/clarity';
 
-// ── CARC/RARC taxonomy ────────────────────────────────────────
-
 export interface DenialTaxonomyEntry {
   carc: string;
   rarc?: string;
@@ -37,7 +35,6 @@ export interface DenialTaxonomyEntry {
 }
 
 export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
-  // Authorization
   {
     carc: '197',
     category: 'authorization',
@@ -64,8 +61,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Request extension or appeal with documentation supporting medical necessity of extended services.',
     policy_hint: 'Authorization extension policy',
   },
-
-  // Eligibility
   {
     carc: '27',
     category: 'eligibility',
@@ -92,8 +87,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Confirm member ID, DOB, subscriber, and relationship. Resubmit with corrected demographics.',
     policy_hint: 'Member matching rules',
   },
-
-  // COB
   {
     carc: '22',
     category: 'cob',
@@ -109,7 +102,7 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
   },
   {
     carc: '23',
-    category: 'cob',
+    category: 'coordination_of_benefits',
     base_recoverability: 80,
     workflow_owner: 'cob_team',
     appeal_eligible: false,
@@ -120,8 +113,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Confirm primary EOB is attached and re-run secondary adjudication.',
     policy_hint: 'Prior payer offset',
   },
-
-  // Modifier
   {
     carc: '4',
     category: 'modifier',
@@ -149,8 +140,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Add appropriate modifier per CPT/payer rules and resubmit.',
     policy_hint: 'Modifier M77',
   },
-
-  // Duplicate
   {
     carc: '18',
     category: 'duplicate',
@@ -164,8 +153,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Verify prior submission. If true duplicate, write off. If distinct, appeal with proof and appropriate modifier.',
     policy_hint: 'Duplicate claim logic',
   },
-
-  // Medical necessity
   {
     carc: '50',
     category: 'medical_necessity',
@@ -179,8 +166,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Clinical appeal with full chart, supporting policy, and physician letter of medical necessity.',
     policy_hint: 'Medical necessity policy',
   },
-
-  // Missing documentation
   {
     carc: '16',
     rarc: 'N657',
@@ -208,8 +193,19 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Review payer message and resubmit with missing information.',
     policy_hint: 'Claim completion requirements',
   },
-
-  // Timely filing
+  {
+    carc: '252',
+    category: 'medical_record_request',
+    base_recoverability: 78,
+    workflow_owner: 'biller',
+    appeal_eligible: false,
+    correction_eligible: true,
+    resubmission_eligible: true,
+    evidence_required: ['Medical records', 'Payer request letter', 'Clinical notes'],
+    description: 'Additional documentation or medical records are required before adjudication can continue.',
+    recommended_action: 'Attach requested medical records, track payer response deadline, and follow up until adjudicated.',
+    policy_hint: 'Medical record request',
+  },
   {
     carc: '29',
     category: 'timely_filing',
@@ -223,8 +219,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'If proof of timely original submission exists, appeal with clearinghouse confirmation. Otherwise consider write-off.',
     policy_hint: 'Timely filing limit',
   },
-
-  // Contractual
   {
     carc: '45',
     category: 'contractual',
@@ -238,8 +232,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Contractual write-off per fee schedule unless underpayment logic indicates payer paid below contract.',
     policy_hint: 'Contract fee schedule',
   },
-
-  // Bundled
   {
     carc: '97',
     category: 'bundled',
@@ -253,8 +245,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Verify bundling. If services are distinct, append correct modifier with supporting documentation.',
     policy_hint: 'NCCI bundling',
   },
-
-  // Coding
   {
     carc: '11',
     category: 'coding',
@@ -268,8 +258,6 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Coder review: align diagnosis with procedure and payer medical policy. Resubmit corrected claim.',
     policy_hint: 'Diagnosis/procedure compatibility',
   },
-
-  // Coverage
   {
     carc: '96',
     rarc: 'N20',
@@ -284,8 +272,19 @@ export const DENIAL_TAXONOMY: DenialTaxonomyEntry[] = [
     recommended_action: 'Verify benefits. If covered per plan document, appeal with SPD/benefit reference. Otherwise patient bill or write off.',
     policy_hint: 'Benefit coverage',
   },
-
-  // Underpayment marker
+  {
+    carc: '119',
+    category: 'benefit_limit',
+    base_recoverability: 22,
+    workflow_owner: 'biller',
+    appeal_eligible: true,
+    correction_eligible: false,
+    resubmission_eligible: false,
+    evidence_required: ['Benefit maximum', 'Accumulator history', 'Plan document'],
+    description: 'Benefit maximum for this time period or occurrence has been reached.',
+    recommended_action: 'Validate benefit maximum and accumulator history. Appeal only if the payer misapplied the limit.',
+    policy_hint: 'Benefit limit',
+  },
   {
     carc: 'UNDERPAY',
     category: 'underpayment',
@@ -307,8 +306,6 @@ export function lookupDenialEntry(carc: string, rarc?: string): DenialTaxonomyEn
 
   return DENIAL_TAXONOMY.find((entry) => entry.carc === carc && !entry.rarc);
 }
-
-// ── Scoring ───────────────────────────────────────────────────
 
 export function computeSeverity(amountAtRiskCents: number, recoverability: number): DenialSeverity {
   const dollars = amountAtRiskCents / 100;
@@ -377,10 +374,15 @@ export function deriveQueues(
   }
 
   if (intel.amount_at_risk_cents >= 250_000) queues.push('high_value');
-
   if (intel.underpayment_cents > 0) queues.push('underpayment_review');
 
-  if (intel.denial_events.some((event) => event.category === 'cob')) queues.push('cob_review');
+  if (
+    intel.denial_events.some(
+      (event) => event.category === 'cob' || event.category === 'coordination_of_benefits',
+    )
+  ) {
+    queues.push('cob_review');
+  }
 
   if (
     intel.appeals.some(
@@ -407,7 +409,15 @@ export function deriveQueues(
 }
 
 export function computeSlaDueAt(submittedAt: string, severity: DenialSeverity): string {
-  const baseDays = severity === 'critical' ? 2 : severity === 'high' ? 5 : severity === 'medium' ? 10 : 21;
+  const baseDays =
+    severity === 'critical'
+      ? 2
+      : severity === 'high'
+        ? 5
+        : severity === 'medium'
+          ? 10
+          : 21;
+
   const date = new Date(submittedAt);
   date.setDate(date.getDate() + baseDays);
   return date.toISOString();
