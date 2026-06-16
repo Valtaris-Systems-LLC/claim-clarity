@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useClarityData, formatCents, relativeTime } from '@/hooks/use-clarity-data';
+import { useClarityData, formatCents } from '@/hooks/use-clarity-data';
 import {
   PageHeader,
   Panel,
@@ -27,6 +27,9 @@ import {
   ShieldCheck,
   Zap,
   AlertTriangle,
+  Download,
+  Printer,
+  Scale,
 } from 'lucide-react';
 import type { ClarityClaim } from '@/hooks/use-clarity-data';
 
@@ -55,9 +58,7 @@ export default function AppealPacket() {
     );
   }
 
-  if (!claimId) {
-    return <PacketPicker claims={claims ?? []} />;
-  }
+  if (!claimId) return <PacketPicker claims={claims ?? []} />;
 
   if (!claim) {
     return (
@@ -70,25 +71,30 @@ export default function AppealPacket() {
   }
 
   const primary = claim.intel.denial_events[0];
-  const playbook = recommendPlaybook(claim, primary);
+  const playbook = primary ? recommendPlaybook(claim, primary) : null;
   const requirements = claims ? findRequirementsFor(claim.intel.payer_id, claims) : undefined;
   const action = nextBestAction(claim, primary);
   const recovery = explainRecoverability(claim);
 
   const requiredEvidence = Array.from(
     new Set([
-      ...(playbook?.playbook.required_evidence ?? []),
       ...(primary?.evidence_required ?? []),
+      ...(playbook?.playbook.required_evidence ?? []),
       ...(requirements?.required_documents ?? []),
     ]),
   );
+
+  const expectedRecovery =
+    playbook?.expected_recovery_cents ?? action.expected_value_cents;
 
   const checklist: ChecklistItem[] = [
     {
       label: 'Denial details captured',
       ok: Boolean(primary),
       detail: primary
-        ? `${primary.carc_code}${primary.rarc_code ? `/${primary.rarc_code}` : ''} · ${CATEGORY_LABEL[primary.category] ?? primary.category}`
+        ? `${primary.carc_code}${primary.rarc_code ? `/${primary.rarc_code}` : ''} · ${
+            CATEGORY_LABEL[primary.category] ?? primary.category
+          }`
         : 'No denial on record',
       severity: 'required',
     },
@@ -97,12 +103,6 @@ export default function AppealPacket() {
       ok: true,
       detail: `${claim.lines.length} line(s) · ${formatCents(claim.total_billed)} billed`,
       severity: 'required',
-    },
-    {
-      label: 'Reimbursement timeline complete',
-      ok: claim.intel.timeline.length > 0,
-      detail: `${claim.intel.timeline.length} event(s)`,
-      severity: 'warning',
     },
     {
       label: 'Required evidence present',
@@ -125,7 +125,9 @@ export default function AppealPacket() {
       label: 'Appeal rationale drafted',
       ok: Boolean(playbook),
       detail: playbook
-        ? `${playbook.playbook.title} · ${Math.round(playbook.expected_recovery_probability * 100)}% expected recovery`
+        ? `${playbook.playbook.title} · ${Math.round(
+            playbook.expected_recovery_probability * 100,
+          )}% expected recovery`
         : 'No playbook matched',
       severity: 'required',
     },
@@ -146,7 +148,9 @@ export default function AppealPacket() {
   ];
 
   const passing = checklist.filter((item) => item.ok).length;
-  const requiredFailures = checklist.filter((item) => item.severity === 'required' && !item.ok).length;
+  const requiredFailures = checklist.filter(
+    (item) => item.severity === 'required' && !item.ok,
+  ).length;
 
   const verdict =
     requiredFailures === 0 && passing === checklist.length
@@ -196,7 +200,7 @@ export default function AppealPacket() {
           ) : (
             <AlertCircle className="h-3 w-3 mr-1" />
           )}
-          Appeal Readiness: {verdict.replace(/_/g, ' ')}
+          Packet Readiness: {verdict.replace(/_/g, ' ')}
         </span>
 
         <span className="text-[12px] text-muted-foreground font-mono">
@@ -211,6 +215,11 @@ export default function AppealPacket() {
             </div>
           )}
 
+          <button className="h-8 px-3 rounded-md text-[12px] font-medium inline-flex items-center gap-1.5 border bg-card hover:bg-muted text-foreground">
+            <Printer className="h-3.5 w-3.5" />
+            Preview
+          </button>
+
           <button
             disabled={verdict !== 'COMPLETE'}
             className="h-8 px-3 rounded-md text-[12px] font-medium inline-flex items-center gap-1.5 bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
@@ -224,10 +233,28 @@ export default function AppealPacket() {
       <ScrollBody>
         <div className="grid grid-cols-3 gap-4 p-5">
           <div className="col-span-2 space-y-4">
+            <Panel title="Packet Executive Summary">
+              <div className="grid grid-cols-4 gap-3">
+                <Metric label="At Risk" value={formatCents(claim.intel.amount_at_risk_cents)} tone="negative" />
+                <Metric label="Expected Recovery" value={formatCents(expectedRecovery)} tone="positive" />
+                <Metric label="Aging" value={`${claim.intel.aging_days}d`} />
+                <Metric label="Readiness" value={`${passing}/${checklist.length}`} />
+              </div>
+
+              <div className="mt-3 rounded bg-accent/40 border border-primary/15 p-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">
+                  Recommended Filing Path
+                </div>
+                <div className="text-[12.5px] text-foreground">
+                  {recovery.recommended_path}
+                </div>
+              </div>
+            </Panel>
+
             <Panel title="Submission Checklist">
               <ul className="divide-y -mx-4 -my-4">
-                {checklist.map((item, i) => (
-                  <li key={i} className="px-4 py-2.5 flex items-start gap-3">
+                {checklist.map((item) => (
+                  <li key={item.label} className="px-4 py-2.5 flex items-start gap-3">
                     {item.ok ? (
                       <CheckCircle2 className="h-4 w-4 text-status-paid mt-0.5" />
                     ) : item.severity === 'warning' ? (
@@ -252,8 +279,8 @@ export default function AppealPacket() {
             </Panel>
 
             {primary && (
-              <Panel title="Denial Details">
-                <div className="grid grid-cols-2 gap-3 text-[12px]">
+              <Panel title="Denial Basis">
+                <div className="grid grid-cols-4 gap-3 text-[12px]">
                   <Field
                     label="CARC / RARC"
                     value={`${primary.carc_code}${primary.rarc_code ? ` / ${primary.rarc_code}` : ''}`}
@@ -261,7 +288,7 @@ export default function AppealPacket() {
                   />
                   <Field label="Category" value={CATEGORY_LABEL[primary.category] ?? primary.category} />
                   <Field label="Group Code" value={primary.group_code} mono />
-                  <Field label="Amount at Risk" value={formatCents(primary.amount_cents)} mono />
+                  <Field label="Amount" value={formatCents(primary.amount_cents)} mono />
                 </div>
 
                 <div className="mt-3 rounded bg-muted/40 p-2.5 text-[12px] text-foreground">
@@ -274,6 +301,65 @@ export default function AppealPacket() {
                     "{primary.payer_message}"
                   </div>
                 )}
+              </Panel>
+            )}
+
+            <Panel title="Appeal Rationale">
+              {playbook ? (
+                <div className="text-[12.5px] text-foreground space-y-3">
+                  <p>{playbook.playbook.appeal_strategy}</p>
+
+                  <div className="rounded bg-accent/40 border border-primary/15 p-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">
+                      Expected Recovery
+                    </div>
+                    <div className="text-[13px] font-mono">
+                      {Math.round(playbook.expected_recovery_probability * 100)}% probability · ≈
+                      {formatCents(playbook.expected_recovery_cents)}
+                    </div>
+                  </div>
+
+                  {recovery.recovery_barriers.length > 0 && (
+                    <div className="rounded border bg-muted/30 p-2.5">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                        Recovery Barriers
+                      </div>
+                      <ul className="space-y-1 text-[11.5px] text-muted-foreground">
+                        {recovery.recovery_barriers.map((barrier) => (
+                          <li key={barrier}>• {barrier}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[12px] text-muted-foreground italic">
+                  No playbook matched this denial.
+                </div>
+              )}
+            </Panel>
+
+            {playbook && (
+              <Panel
+                title="Operational Playbook"
+                action={
+                  <span className={`pill border ${EFFORT_CLS[playbook.effort]}`}>
+                    {playbook.effort} · {playbook.estimated_minutes}m
+                  </span>
+                }
+              >
+                <div className="space-y-2">
+                  {playbook.playbook.steps.map((step) => (
+                    <div key={step.order} className="rounded border bg-muted/30 p-2.5">
+                      <div className="text-[12.5px] font-medium text-foreground">
+                        {step.order}. {step.action}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        {step.owner} · {step.rationale}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </Panel>
             )}
 
@@ -319,69 +405,6 @@ export default function AppealPacket() {
                 ))}
               </div>
             </Panel>
-
-            <Panel title="Appeal Rationale">
-              {playbook ? (
-                <div className="text-[12.5px] text-foreground space-y-3">
-                  <p>{playbook.playbook.appeal_strategy}</p>
-
-                  <div className="rounded bg-accent/40 border border-primary/15 p-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">
-                      Expected Recovery
-                    </div>
-                    <div className="text-[13px] font-mono">
-                      {Math.round(playbook.expected_recovery_probability * 100)}% probability · ≈
-                      {formatCents(playbook.expected_recovery_cents)}
-                    </div>
-                  </div>
-
-                  <div className="rounded border bg-muted/30 p-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                      Recovery Barriers
-                    </div>
-                    {recovery.recovery_barriers.length > 0 ? (
-                      <ul className="space-y-1 text-[11.5px] text-muted-foreground">
-                        {recovery.recovery_barriers.map((barrier) => (
-                          <li key={barrier}>• {barrier}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="text-[11.5px] text-muted-foreground">
-                        No major barriers detected.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-[12px] text-muted-foreground italic">
-                  No playbook matched this denial.
-                </div>
-              )}
-            </Panel>
-
-            {playbook && (
-              <Panel
-                title="Playbook Steps"
-                action={
-                  <span className={`pill border ${EFFORT_CLS[playbook.effort]}`}>
-                    {playbook.effort} · {playbook.estimated_minutes}m
-                  </span>
-                }
-              >
-                <div className="space-y-2">
-                  {playbook.playbook.steps.map((step) => (
-                    <div key={step.order} className="rounded border bg-muted/30 p-2.5">
-                      <div className="text-[12.5px] font-medium text-foreground">
-                        {step.order}. {step.action}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5">
-                        {step.owner} · {step.rationale}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-            )}
           </div>
 
           <div className="space-y-4">
@@ -400,14 +423,14 @@ export default function AppealPacket() {
                     {action.headline}
                   </div>
                   <div className="text-[11px] font-mono text-muted-foreground mt-0.5 uppercase tracking-wider">
-                    {action.owner} · {action.effort_minutes}m · confidence {action.confidence}%
+                    {action.owner} · {action.effort_minutes}m
                   </div>
                 </div>
               </div>
 
               <ul className="mt-2 space-y-1 text-[11.5px]">
-                {action.why.map((why, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-muted-foreground">
+                {action.why.map((why) => (
+                  <li key={why} className="flex items-start gap-1.5 text-muted-foreground">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                     <span>{why}</span>
                   </li>
@@ -477,8 +500,8 @@ export default function AppealPacket() {
 
                 {requirements.notes.length > 0 && (
                   <div className="mt-2 pt-2 border-t text-[11px] text-muted-foreground space-y-1">
-                    {requirements.notes.map((note, i) => (
-                      <div key={i} className="flex items-start gap-1">
+                    {requirements.notes.map((note) => (
+                      <div key={note} className="flex items-start gap-1">
                         <FileText className="h-3 w-3 mt-0.5" />
                         <span>{note}</span>
                       </div>
@@ -494,6 +517,20 @@ export default function AppealPacket() {
                 <PacketItem icon={<AlertCircle className="h-3.5 w-3.5" />} label="Denial detail" ok={Boolean(primary)} />
                 <PacketItem icon={<ClipboardList className="h-3.5 w-3.5" />} label="Appeal rationale" ok={Boolean(playbook)} />
                 <PacketItem icon={<FileText className="h-3.5 w-3.5" />} label="Evidence checklist" ok={requiredEvidence.length > 0} />
+                <PacketItem icon={<Scale className="h-3.5 w-3.5" />} label="Payer requirements" ok={Boolean(requirements)} />
+              </div>
+            </Panel>
+
+            <Panel title="Packet Actions">
+              <div className="space-y-1.5">
+                <button className="w-full h-8 px-2.5 rounded-md text-[12px] font-medium inline-flex items-center gap-2 border bg-card hover:bg-muted text-foreground">
+                  <Download className="h-3.5 w-3.5" />
+                  Export packet
+                </button>
+                <button className="w-full h-8 px-2.5 rounded-md text-[12px] font-medium inline-flex items-center gap-2 border bg-card hover:bg-muted text-foreground">
+                  <Printer className="h-3.5 w-3.5" />
+                  Print packet
+                </button>
               </div>
             </Panel>
           </div>
@@ -531,33 +568,45 @@ function PacketPicker({ claims }: { claims: ClarityClaim[] }) {
           ) : (
             <Panel title={`Build-ready claims (${list.length})`} dense>
               <div className="divide-y">
-                <div className="grid grid-cols-[110px_1fr_140px_90px] gap-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
+                <div className="grid grid-cols-[110px_1fr_140px_140px_90px] gap-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
                   <span>Claim</span>
                   <span>Payer</span>
                   <span className="text-right">At Risk</span>
+                  <span className="text-right">Expected</span>
                   <span></span>
                 </div>
 
-                {list.map((claim) => (
-                  <Link
-                    key={claim.claim_id}
-                    to={`/packet/${claim.claim_id}`}
-                    className="grid grid-cols-[110px_1fr_140px_90px] gap-3 items-center px-4 py-2.5 hover:bg-muted/40 text-[12.5px]"
-                  >
-                    <span className="font-mono font-semibold text-foreground">
-                      {claim.claim_id}
-                    </span>
-                    <span className="text-foreground truncate">
-                      {claim.intel.payer_name}
-                    </span>
-                    <span className="font-mono text-right tabular-nums amount-negative">
-                      {formatCents(claim.intel.amount_at_risk_cents)}
-                    </span>
-                    <span className="text-[11px] text-primary justify-self-end">
-                      Build →
-                    </span>
-                  </Link>
-                ))}
+                {list.map((claim) => {
+                  const primary = claim.intel.denial_events[0];
+                  const playbook = primary ? recommendPlaybook(claim, primary) : null;
+                  const expected =
+                    playbook?.expected_recovery_cents ??
+                    Math.round(claim.intel.amount_at_risk_cents * claim.intel.recoverability_score / 100);
+
+                  return (
+                    <Link
+                      key={claim.claim_id}
+                      to={`/packet/${claim.claim_id}`}
+                      className="grid grid-cols-[110px_1fr_140px_140px_90px] gap-3 items-center px-4 py-2.5 hover:bg-muted/40 text-[12.5px]"
+                    >
+                      <span className="font-mono font-semibold text-foreground">
+                        {claim.claim_id}
+                      </span>
+                      <span className="text-foreground truncate">
+                        {claim.intel.payer_name}
+                      </span>
+                      <span className="font-mono text-right tabular-nums amount-negative">
+                        {formatCents(claim.intel.amount_at_risk_cents)}
+                      </span>
+                      <span className="font-mono text-right tabular-nums amount-positive">
+                        ≈{formatCents(expected)}
+                      </span>
+                      <span className="text-[11px] text-primary justify-self-end">
+                        Build →
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </Panel>
           )}
@@ -594,10 +643,34 @@ function PacketItem({
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-[12.5px] text-foreground ${mono ? 'font-mono' : ''}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'positive' | 'negative';
+}) {
+  const cls =
+    tone === 'positive'
+      ? 'amount-positive'
+      : tone === 'negative'
+        ? 'amount-negative'
+        : 'text-foreground';
+
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={`font-mono text-[15px] font-semibold tabular-nums mt-0.5 ${cls}`}>
         {value}
       </div>
     </div>
